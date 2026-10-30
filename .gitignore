@@ -1,0 +1,25 @@
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Build and runtime data
+/bin/
+/dist/
+/build/
+/data/
+/coverage/
+/node_modules/
+/web/.svelte-kit/
+/web/build/
+/web/node_modules/
+*.db
+*.db-shm
+*.db-wal
+
+# Editor and OS files
+.DS_Store
+.idea/
+.vscode/

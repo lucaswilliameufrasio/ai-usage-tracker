@@ -5,9 +5,12 @@ import {
   deliveryLabel,
   loginCallbackPath,
   loginGuide,
+  parseDevices,
+  parseHistory,
   parseLoginCatalog,
   parseLoginProvider,
   parseOverview,
+  parseSettings,
   parseRoute,
   screenPath,
   projectionCopy,
@@ -176,6 +179,80 @@ describe("visão geral", () => {
       assert.fail("projeção ausente");
     }
     assert.equal(projectionCopy(projection).includes("Não é uma leitura do provedor."), true);
+  });
+
+  it("pula item incompleto e mantém o restante", () => {
+    const overview = parseOverview({
+      providers: [
+        {
+          provider: "claude",
+          freshness: "",
+          reason_code: "",
+          last_sample: {
+            plan: "",
+            windows: [
+              { name: "five_hour", used: Number.POSITIVE_INFINITY, resets_at: "2026-10-29T18:00:00Z" },
+              { name: "seven_day", used: 3, resets_at: "2026-10-30T00:00:00Z", path: "/home/canary/secret-project" },
+            ],
+          },
+        },
+      ],
+    });
+    assert.equal(overview.ok, true);
+    if (!overview.ok) {
+      return;
+    }
+    const claude = overview.value.providers[0];
+    assert.equal(claude?.freshness, "");
+    assert.equal(claude?.reasonCode, "");
+    assert.equal(claude?.plan, "");
+    assert.equal(claude?.windows.length, 1);
+    assert.equal(claude?.windows[0]?.used, 3);
+    assert.equal(JSON.stringify(overview.value).includes("secret-project"), false);
+
+    const history = parseHistory({
+      data: [
+        { sample_id: "smp_1", provider: "claude", collected_at: "2026-10-30T00:00:00Z", windows: "nao" },
+        { provider: "codex" },
+      ],
+      has_more: "true",
+      next_cursor: 15,
+    });
+    assert.equal(history.ok, true);
+    if (!history.ok) {
+      return;
+    }
+    assert.equal(history.value.samples.length, 1);
+    assert.equal(history.value.samples[0]?.windows.length, 0);
+    assert.equal(history.value.hasMore, false);
+    assert.equal(history.value.nextCursor, "");
+
+    const devices = parseDevices({
+      data: [
+        { id: "dvc_1", name: "caderno", created_at: "2026-10-30T00:00:00Z", revoked_at: "" },
+        { name: "sem-id" },
+      ],
+    });
+    assert.equal(devices.ok, true);
+    if (!devices.ok) {
+      return;
+    }
+    assert.equal(devices.value.length, 1);
+    assert.equal(devices.value[0]?.revokedAt, "");
+
+    const settings = parseSettings({
+      stale_after_seconds: 1800,
+      alert_threshold_percent: 80,
+      timezone: "",
+      quiet_hours: "noite",
+    });
+    assert.equal(settings.ok, true);
+    if (!settings.ok) {
+      return;
+    }
+    assert.equal(settings.value.timezone, "");
+    assert.equal(settings.value.quietStart, "");
+    assert.equal(settings.value.quietEnd, "");
   });
 });
 

@@ -1,3 +1,20 @@
+import {
+  array,
+  boolean,
+  fallback,
+  finite,
+  minLength,
+  number,
+  object,
+  optional,
+  picklist,
+  pipe,
+  safeParse,
+  string,
+  transform,
+  unknown,
+} from "valibot";
+
 export const operatorTokenKey = "tracker.operator_token";
 export const overviewCacheKey = "tracker.overview.cache";
 
@@ -177,7 +194,20 @@ function namedRoute(name: string): RouteName | undefined {
   return undefined;
 }
 
-const loginProviders: LoginProviderName[] = ["github", "gitea", "google", "apple"];
+const loginNames = ["github", "gitea", "google", "apple"] as const;
+const loginNameSchema = picklist(loginNames);
+const usageProviderSchema = picklist(["claude", "codex"] as const);
+const softString = optional(
+  pipe(
+    unknown(),
+    transform((value): string | undefined => {
+      if (typeof value === "string") {
+        return value;
+      }
+      return undefined;
+    }),
+  ),
+);
 
 export type LoginGuide = {
   steps: string[];
@@ -234,32 +264,61 @@ export function loginCallbackPath(provider: string): string | undefined {
   return `/v1/login/${provider}/callback`;
 }
 
+const publicLoginSchema = object({
+  data: array(unknown()),
+});
+
+const publicLoginItemSchema = object({
+  provider: loginNameSchema,
+});
+
+const sessionSchema = object({
+  provider: loginNameSchema,
+});
+
+const secretBackendSchema = object({
+  kind: pipe(string(), minLength(1)),
+  ready: boolean(),
+});
+
+const loginProviderSchema = object({
+  provider: loginNameSchema,
+  enabled: boolean(),
+  configured: boolean(),
+  secret_present: boolean(),
+  client_id: softString,
+  issuer_url: softString,
+  team_id: softString,
+  key_id: softString,
+  services_id: softString,
+  updated_at: softString,
+});
+
+const loginCatalogSchema = object({
+  data: array(unknown()),
+});
+
 export function parsePublicLogins(value: unknown): string[] {
-  if (!isRecord(value) || !Array.isArray(value.data)) {
+  const parsed = safeParse(publicLoginSchema, value);
+  if (!parsed.success) {
     return [];
   }
   const names: string[] = [];
-  for (const item of value.data) {
-    if (!isRecord(item)) {
-      continue;
-    }
-    const provider = item.provider;
-    if (typeof provider === "string" && isLoginProvider(provider)) {
-      names.push(provider);
+  for (const item of parsed.output.data) {
+    const provider = safeParse(publicLoginItemSchema, item);
+    if (provider.success) {
+      names.push(provider.output.provider);
     }
   }
   return names;
 }
 
 export function parseSession(value: unknown): string | undefined {
-  if (!isRecord(value)) {
+  const parsed = safeParse(sessionSchema, value);
+  if (!parsed.success) {
     return undefined;
   }
-  const provider = value.provider;
-  if (typeof provider !== "string" || !isLoginProvider(provider)) {
-    return undefined;
-  }
-  return provider;
+  return parsed.output.provider;
 }
 
 export function loginLabel(provider: string): string {
@@ -279,31 +338,28 @@ export function loginLabel(provider: string): string {
 }
 
 export function parseSecretBackend(value: unknown): Parsed<SecretBackendView> {
-  if (!isRecord(value)) {
+  const parsed = safeParse(secretBackendSchema, value);
+  if (!parsed.success) {
     return fail("O cofre veio ilegível.");
   }
-  const kind = readString(value, "kind");
-  const ready = readBool(value, "ready");
-  if (kind === undefined || kind === "" || ready === undefined) {
-    return fail("O cofre veio ilegível.");
-  }
-  return { ok: true, value: { kind, ready } };
+  return { ok: true, value: { kind: parsed.output.kind, ready: parsed.output.ready } };
 }
 
 export function parseLoginCatalog(value: unknown): Parsed<LoginProviderView[]> {
-  if (!isRecord(value) || !Array.isArray(value.data)) {
+  const parsed = safeParse(loginCatalogSchema, value);
+  if (!parsed.success) {
     return fail("A lista de logins veio ilegível.");
   }
   const byName = new Map<LoginProviderName, LoginProviderView>();
-  for (const item of value.data) {
-    const parsed = parseLoginProvider(item);
-    if (!parsed.ok) {
+  for (const item of parsed.output.data) {
+    const provider = parseLoginProvider(item);
+    if (!provider.ok) {
       return fail("A lista de logins veio incompleta.");
     }
-    byName.set(parsed.value.provider, parsed.value);
+    byName.set(provider.value.provider, provider.value);
   }
   const items: LoginProviderView[] = [];
-  for (const name of loginProviders) {
+  for (const name of loginNames) {
     const item = byName.get(name);
     if (item === undefined) {
       return fail("A lista de logins veio incompleta.");
@@ -314,51 +370,45 @@ export function parseLoginCatalog(value: unknown): Parsed<LoginProviderView[]> {
 }
 
 export function parseLoginProvider(value: unknown): Parsed<LoginProviderView> {
-  if (!isRecord(value)) {
+  const parsed = safeParse(loginProviderSchema, value);
+  if (!parsed.success) {
     return fail("O login veio ilegível.");
   }
-  const provider = readString(value, "provider");
-  const enabled = readBool(value, "enabled");
-  const configured = readBool(value, "configured");
-  const secretPresent = readBool(value, "secret_present");
-  if (
-    !isLoginProvider(provider) ||
-    enabled === undefined ||
-    configured === undefined ||
-    secretPresent === undefined
-  ) {
-    return fail("O login veio ilegível.");
+  const item = parsed.output;
+  const view: LoginProviderView = {
+    provider: item.provider,
+    enabled: item.enabled,
+    configured: item.configured,
+    secretPresent: item.secret_present,
+  };
+  if (presentString(item.client_id)) {
+    view.clientId = item.client_id;
   }
-  const view: LoginProviderView = { provider, enabled, configured, secretPresent };
-  const clientId = readString(value, "client_id");
-  const issuerUrl = readString(value, "issuer_url");
-  const teamId = readString(value, "team_id");
-  const keyId = readString(value, "key_id");
-  const servicesId = readString(value, "services_id");
-  const updatedAt = readString(value, "updated_at");
-  if (clientId !== undefined && clientId !== "") {
-    view.clientId = clientId;
+  if (presentString(item.issuer_url)) {
+    view.issuerUrl = item.issuer_url;
   }
-  if (issuerUrl !== undefined && issuerUrl !== "") {
-    view.issuerUrl = issuerUrl;
+  if (presentString(item.team_id)) {
+    view.teamId = item.team_id;
   }
-  if (teamId !== undefined && teamId !== "") {
-    view.teamId = teamId;
+  if (presentString(item.key_id)) {
+    view.keyId = item.key_id;
   }
-  if (keyId !== undefined && keyId !== "") {
-    view.keyId = keyId;
+  if (presentString(item.services_id)) {
+    view.servicesId = item.services_id;
   }
-  if (servicesId !== undefined && servicesId !== "") {
-    view.servicesId = servicesId;
-  }
-  if (updatedAt !== undefined && updatedAt !== "") {
-    view.updatedAt = updatedAt;
+  if (presentString(item.updated_at)) {
+    view.updatedAt = item.updated_at;
   }
   return { ok: true, value: view };
 }
 
 function isLoginProvider(value: string | undefined): value is LoginProviderName {
-  return value === "github" || value === "gitea" || value === "google" || value === "apple";
+  const parsed = safeParse(loginNameSchema, value);
+  return parsed.success;
+}
+
+function presentString(value: string | undefined): value is string {
+  return value !== undefined && value !== "";
 }
 
 export function formatInstant(iso: string): string {
@@ -541,18 +591,114 @@ export function subscriptionLabel(status: string): string {
   return "Estado desconhecido";
 }
 
+const finiteNumber = pipe(number(), finite());
+
+const windowSchema = object({
+  name: string(),
+  used: finiteNumber,
+  resets_at: string(),
+});
+
+const projectionSchema = object({
+  window: string(),
+  estimated_used: finiteNumber,
+  resets_at: string(),
+  data_quality: string(),
+});
+
+const lastSampleSchema = object({
+  plan: softString,
+  windows: optional(unknown()),
+});
+
+const cardSchema = object({
+  provider: usageProviderSchema,
+  freshness: optional(fallback(string(), "empty")),
+  reason_code: softString,
+  observed_at: softString,
+  last_sample: optional(unknown()),
+  projection: optional(unknown()),
+});
+
+const overviewSchema = object({
+  generated_at: optional(fallback(string(), "")),
+  stale_after_seconds: optional(fallback(finiteNumber, 0)),
+  providers: array(unknown()),
+});
+
+const cachedOverviewSchema = object({
+  overview: optional(unknown()),
+});
+
+const historySchema = object({
+  data: array(unknown()),
+  has_more: optional(unknown()),
+  next_cursor: optional(fallback(string(), "")),
+});
+
+const sampleSchema = object({
+  sample_id: string(),
+  provider: string(),
+  collected_at: string(),
+  plan: softString,
+  windows: optional(unknown()),
+});
+
+const listSchema = object({
+  data: array(unknown()),
+});
+
+const deviceSchema = object({
+  id: string(),
+  name: string(),
+  created_at: string(),
+  revoked_at: softString,
+});
+
+const settingsSchema = object({
+  stale_after_seconds: finiteNumber,
+  alert_threshold_percent: finiteNumber,
+  timezone: string(),
+  quiet_hours: optional(unknown()),
+});
+
+const quietSchema = object({
+  start: optional(fallback(string(), "")),
+  end: optional(fallback(string(), "")),
+});
+
+const subscriptionSchema = object({
+  id: string(),
+  endpoint: string(),
+  created_at: string(),
+  status: string(),
+  expired_at: softString,
+  last_error: softString,
+});
+
+const deliverySchema = object({
+  id: string(),
+  kind: string(),
+  provider: string(),
+  title: string(),
+  body: string(),
+  status: string(),
+  created_at: string(),
+  detail: softString,
+});
+
 export function parseOverview(value: unknown): Parsed<Overview> {
   if (!isRecord(value)) {
     return fail("A visão geral chegou ilegível.");
   }
-  const providers = value.providers;
-  if (!Array.isArray(providers)) {
+  const parsed = safeParse(overviewSchema, value);
+  if (!parsed.success) {
     return fail("A visão geral não tem provedores.");
   }
   const found = new Map<"claude" | "codex", ProviderCard>();
-  for (const item of providers) {
+  for (const item of parsed.output.providers) {
     const card = parseCard(item);
-    if (card) {
+    if (card !== undefined) {
       found.set(card.provider, card);
     }
   }
@@ -561,28 +707,30 @@ export function parseOverview(value: unknown): Parsed<Overview> {
   return {
     ok: true,
     value: {
-      generatedAt: readString(value, "generated_at") ?? "",
-      staleAfterSeconds: readNumber(value, "stale_after_seconds") ?? 0,
+      generatedAt: parsed.output.generated_at ?? "",
+      staleAfterSeconds: parsed.output.stale_after_seconds ?? 0,
       providers: [claude, codex],
     },
   };
 }
 
 export function parseCachedOverview(value: unknown): Parsed<Overview> {
-  if (!isRecord(value)) {
+  const parsed = safeParse(cachedOverviewSchema, value);
+  if (!parsed.success) {
     return fail("A cópia local está ilegível.");
   }
-  return parseOverview(value.overview);
+  return parseOverview(parsed.output.overview);
 }
 
 export function parseHistory(value: unknown): Parsed<HistoryPage> {
-  if (!isRecord(value) || !Array.isArray(value.data)) {
+  const parsed = safeParse(historySchema, value);
+  if (!parsed.success) {
     return fail("O histórico chegou ilegível.");
   }
   const samples: HistorySample[] = [];
-  for (const item of value.data) {
+  for (const item of parsed.output.data) {
     const sample = parseSample(item);
-    if (sample) {
+    if (sample !== undefined) {
       samples.push(sample);
     }
   }
@@ -590,33 +738,32 @@ export function parseHistory(value: unknown): Parsed<HistoryPage> {
     ok: true,
     value: {
       samples,
-      hasMore: value.has_more === true,
-      nextCursor: readString(value, "next_cursor") ?? "",
+      hasMore: parsed.output.has_more === true,
+      nextCursor: parsed.output.next_cursor ?? "",
     },
   };
 }
 
 export function parseDevices(value: unknown): Parsed<DeviceView[]> {
-  if (!isRecord(value) || !Array.isArray(value.data)) {
+  const parsed = safeParse(listSchema, value);
+  if (!parsed.success) {
     return fail("A lista de dispositivos chegou ilegível.");
   }
   const devices: DeviceView[] = [];
-  for (const item of value.data) {
-    if (!isRecord(item)) {
+  for (const item of parsed.output.data) {
+    const device = safeParse(deviceSchema, item);
+    if (!device.success) {
       continue;
     }
-    const id = readString(item, "id");
-    const name = readString(item, "name");
-    const createdAt = readString(item, "created_at");
-    if (id === undefined || name === undefined || createdAt === undefined) {
-      continue;
+    const view: DeviceView = {
+      id: device.output.id,
+      name: device.output.name,
+      createdAt: device.output.created_at,
+    };
+    if (device.output.revoked_at !== undefined) {
+      view.revokedAt = device.output.revoked_at;
     }
-    const device: DeviceView = { id, name, createdAt };
-    const revokedAt = readString(item, "revoked_at");
-    if (revokedAt !== undefined) {
-      device.revokedAt = revokedAt;
-    }
-    devices.push(device);
+    devices.push(view);
   }
   return { ok: true, value: devices };
 }
@@ -625,90 +772,79 @@ export function parseSettings(value: unknown): Parsed<SettingsView> {
   if (!isRecord(value)) {
     return fail("As preferências chegaram ilegíveis.");
   }
-  const stale = readNumber(value, "stale_after_seconds");
-  const threshold = readNumber(value, "alert_threshold_percent");
-  const timezone = readString(value, "timezone");
-  if (stale === undefined || threshold === undefined || timezone === undefined) {
+  const parsed = safeParse(settingsSchema, value);
+  if (!parsed.success) {
     return fail("As preferências chegaram incompletas.");
   }
   const settings: SettingsView = {
-    staleAfterSeconds: stale,
-    alertThresholdPercent: threshold,
-    timezone,
+    staleAfterSeconds: parsed.output.stale_after_seconds,
+    alertThresholdPercent: parsed.output.alert_threshold_percent,
+    timezone: parsed.output.timezone,
     quietStart: "",
     quietEnd: "",
   };
-  const quiet = value.quiet_hours;
-  if (isRecord(quiet)) {
-    settings.quietStart = readString(quiet, "start") ?? "";
-    settings.quietEnd = readString(quiet, "end") ?? "";
+  if (isRecord(parsed.output.quiet_hours)) {
+    const quiet = safeParse(quietSchema, parsed.output.quiet_hours);
+    if (quiet.success) {
+      settings.quietStart = quiet.output.start ?? "";
+      settings.quietEnd = quiet.output.end ?? "";
+    }
   }
   return { ok: true, value: settings };
 }
 
 export function parseSubscriptions(value: unknown): Parsed<SubscriptionView[]> {
-  if (!isRecord(value) || !Array.isArray(value.data)) {
+  const parsed = safeParse(listSchema, value);
+  if (!parsed.success) {
     return fail("As inscrições chegaram ilegíveis.");
   }
   const items: SubscriptionView[] = [];
-  for (const item of value.data) {
-    if (!isRecord(item)) {
+  for (const item of parsed.output.data) {
+    const subscription = safeParse(subscriptionSchema, item);
+    if (!subscription.success) {
       continue;
     }
-    const id = readString(item, "id");
-    const endpoint = readString(item, "endpoint");
-    const createdAt = readString(item, "created_at");
-    const status = readString(item, "status");
-    if (id === undefined || endpoint === undefined || createdAt === undefined || status === undefined) {
-      continue;
+    const view: SubscriptionView = {
+      id: subscription.output.id,
+      endpoint: subscription.output.endpoint,
+      createdAt: subscription.output.created_at,
+      status: subscription.output.status,
+    };
+    if (subscription.output.expired_at !== undefined) {
+      view.expiredAt = subscription.output.expired_at;
     }
-    const subscription: SubscriptionView = { id, endpoint, createdAt, status };
-    const expiredAt = readString(item, "expired_at");
-    const lastError = readString(item, "last_error");
-    if (expiredAt !== undefined) {
-      subscription.expiredAt = expiredAt;
+    if (subscription.output.last_error !== undefined) {
+      view.lastError = subscription.output.last_error;
     }
-    if (lastError !== undefined) {
-      subscription.lastError = lastError;
-    }
-    items.push(subscription);
+    items.push(view);
   }
   return { ok: true, value: items };
 }
 
 export function parseDeliveries(value: unknown): Parsed<DeliveryView[]> {
-  if (!isRecord(value) || !Array.isArray(value.data)) {
+  const parsed = safeParse(listSchema, value);
+  if (!parsed.success) {
     return fail("Os avisos chegaram ilegíveis.");
   }
   const items: DeliveryView[] = [];
-  for (const item of value.data) {
-    if (!isRecord(item)) {
+  for (const item of parsed.output.data) {
+    const delivery = safeParse(deliverySchema, item);
+    if (!delivery.success) {
       continue;
     }
-    const id = readString(item, "id");
-    const kind = readString(item, "kind");
-    const provider = readString(item, "provider");
-    const title = readString(item, "title");
-    const body = readString(item, "body");
-    const status = readString(item, "status");
-    const createdAt = readString(item, "created_at");
-    if (
-      id === undefined ||
-      kind === undefined ||
-      provider === undefined ||
-      title === undefined ||
-      body === undefined ||
-      status === undefined ||
-      createdAt === undefined
-    ) {
-      continue;
+    const view: DeliveryView = {
+      id: delivery.output.id,
+      kind: delivery.output.kind,
+      provider: delivery.output.provider,
+      title: delivery.output.title,
+      body: delivery.output.body,
+      status: delivery.output.status,
+      createdAt: delivery.output.created_at,
+    };
+    if (delivery.output.detail !== undefined) {
+      view.detail = delivery.output.detail;
     }
-    const delivery: DeliveryView = { id, kind, provider, title, body, status, createdAt };
-    const detail = readString(item, "detail");
-    if (detail !== undefined) {
-      delivery.detail = detail;
-    }
-    items.push(delivery);
+    items.push(view);
   }
   return { ok: true, value: items };
 }
@@ -726,118 +862,84 @@ function emptyCard(provider: "claude" | "codex"): ProviderCard {
 }
 
 function parseCard(value: unknown): ProviderCard | undefined {
-  if (!isRecord(value)) {
+  const parsed = safeParse(cardSchema, value);
+  if (!parsed.success) {
     return undefined;
   }
-  const provider = readString(value, "provider");
-  if (provider !== "claude" && provider !== "codex") {
-    return undefined;
-  }
+  const item = parsed.output;
   const card: ProviderCard = {
-    provider,
-    freshness: readString(value, "freshness") ?? "empty",
+    provider: item.provider,
+    freshness: item.freshness ?? "empty",
     windows: [],
   };
-  const reasonCode = readString(value, "reason_code");
-  const observedAt = readString(value, "observed_at");
-  if (reasonCode !== undefined) {
-    card.reasonCode = reasonCode;
+  if (item.reason_code !== undefined) {
+    card.reasonCode = item.reason_code;
   }
-  if (observedAt !== undefined) {
-    card.observedAt = observedAt;
+  if (item.observed_at !== undefined) {
+    card.observedAt = item.observed_at;
   }
-  const lastSample = value.last_sample;
-  if (isRecord(lastSample)) {
-    const plan = readString(lastSample, "plan");
-    if (plan !== undefined) {
-      card.plan = plan;
+  if (isRecord(item.last_sample)) {
+    const sample = safeParse(lastSampleSchema, item.last_sample);
+    if (sample.success) {
+      if (sample.output.plan !== undefined) {
+        card.plan = sample.output.plan;
+      }
+      card.windows = parseWindows(sample.output.windows);
     }
-    card.windows = parseWindows(lastSample.windows);
   }
-  const projection = parseProjection(value.projection);
-  if (projection) {
+  const projection = parseProjection(item.projection);
+  if (projection !== undefined) {
     card.projection = projection;
   }
   return card;
 }
 
 function parseSample(value: unknown): HistorySample | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  const sampleId = readString(value, "sample_id");
-  const provider = readString(value, "provider");
-  const collectedAt = readString(value, "collected_at");
-  if (sampleId === undefined || provider === undefined || collectedAt === undefined) {
+  const parsed = safeParse(sampleSchema, value);
+  if (!parsed.success) {
     return undefined;
   }
   const sample: HistorySample = {
-    sampleId,
-    provider,
-    collectedAt,
-    windows: parseWindows(value.windows),
+    sampleId: parsed.output.sample_id,
+    provider: parsed.output.provider,
+    collectedAt: parsed.output.collected_at,
+    windows: parseWindows(parsed.output.windows),
   };
-  const plan = readString(value, "plan");
-  if (plan !== undefined) {
-    sample.plan = plan;
+  if (parsed.output.plan !== undefined) {
+    sample.plan = parsed.output.plan;
   }
   return sample;
 }
 
 function parseWindows(value: unknown): WindowView[] {
-  if (!Array.isArray(value)) {
+  const parsed = safeParse(array(unknown()), value);
+  if (!parsed.success) {
     return [];
   }
   const windows: WindowView[] = [];
-  for (const item of value) {
-    if (!isRecord(item)) {
+  for (const item of parsed.output) {
+    const windowItem = safeParse(windowSchema, item);
+    if (!windowItem.success) {
       continue;
     }
-    const name = readString(item, "name");
-    const used = readNumber(item, "used");
-    const resetsAt = readString(item, "resets_at");
-    if (name === undefined || used === undefined || resetsAt === undefined) {
-      continue;
-    }
-    windows.push({ name, used, resetsAt });
+    windows.push({
+      name: windowItem.output.name,
+      used: windowItem.output.used,
+      resetsAt: windowItem.output.resets_at,
+    });
   }
   return windows;
 }
 
 function parseProjection(value: unknown): ProjectionView | undefined {
-  if (!isRecord(value)) {
+  const parsed = safeParse(projectionSchema, value);
+  if (!parsed.success) {
     return undefined;
   }
-  const windowName = readString(value, "window");
-  const estimatedUsed = readNumber(value, "estimated_used");
-  const resetsAt = readString(value, "resets_at");
-  const dataQuality = readString(value, "data_quality");
-  if (windowName === undefined || estimatedUsed === undefined || resetsAt === undefined || dataQuality === undefined) {
-    return undefined;
-  }
-  return { window: windowName, estimatedUsed, resetsAt, dataQuality };
-}
-
-function readString(record: Record<string, unknown>, key: string): string | undefined {
-  const value = record[key];
-  if (typeof value !== "string") {
-    return undefined;
-  }
-  return value;
-}
-
-function readBool(record: Record<string, unknown>, key: string): boolean | undefined {
-  const value = record[key];
-  if (typeof value !== "boolean") {
-    return undefined;
-  }
-  return value;
-}
-
-function readNumber(record: Record<string, unknown>, key: string): number | undefined {
-  const value = record[key];
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    return undefined;
-  }
-  return value;
+  return {
+    window: parsed.output.window,
+    estimatedUsed: parsed.output.estimated_used,
+    resetsAt: parsed.output.resets_at,
+    dataQuality: parsed.output.data_quality,
+  };
 }

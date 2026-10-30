@@ -23,6 +23,12 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "backup", "restore":
+			os.Exit(maintenance(os.Args[1], os.Args[2:]))
+		}
+	}
 	addr := flag.String("addr", env("TRACKER_ADDR", "127.0.0.1:8787"), "endereço de escuta")
 	data := flag.String("data", env("TRACKER_DATA_DIR", "data"), "diretório do SQLite e das chaves locais")
 	web := flag.String("web", env("TRACKER_WEB_DIR", ""), "diretório do PWA compilado")

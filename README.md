@@ -24,6 +24,13 @@ go run ./cmd/agent run --api http://127.0.0.1:8787 --token-file device.token --s
 
 `data/`, `device.token`, `spool.json` e a chave VAPID ficam fora do Git. Não commite credenciais nem capturas pessoais.
 
+O backup do SQLite é um snapshot consistente. Ele não inclui o cofre nem a chave. A restauração só grava num diretório que ainda não tem `tracker.db` (ADR 0010). A tela não baixa o banco. A recuperação do produto é o sqlite-replication, primeiro num banco temporário em WAL, sem abrir o `data/` em uso (ADR 0011).
+
+```sh
+go run ./cmd/tracker backup --data data --out snapshot.db
+go run ./cmd/tracker restore --snapshot snapshot.db --dest restaurado
+```
+
 ## Cofre e login
 
 Sem `TRACKER_VAULT_KEY`, a coleta continua. Gravar um login exige o cofre aberto. A chave são 32 bytes em base64 e fica fora do diretório `data/vault`. Uma chave inválida impede o processo de subir. Se a variável estiver ausente, o servidor sobe e a área Acesso informa que o cofre não está aberto.

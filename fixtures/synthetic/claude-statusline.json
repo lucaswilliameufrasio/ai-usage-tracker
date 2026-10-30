@@ -1,0 +1,15 @@
+{
+  "cwd": "/home/canary/secret-project",
+  "transcript_path": "/home/canary/secret-project/file.txt",
+  "session_id": "CANARY_SESSION",
+  "rate_limits": {
+    "five_hour": {
+      "used_percentage": 23.5,
+      "resets_at": 1761753600
+    },
+    "seven_day": {
+      "used_percentage": 41.2,
+      "resets_at": 1762185600
+    }
+  }
+}

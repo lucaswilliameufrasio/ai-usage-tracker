@@ -14,7 +14,11 @@
 /node_modules/
 /web/.svelte-kit/
 /web/build/
+/web/dist/
 /web/node_modules/
+vapid.json
+spool.json
+device.token
 *.db
 *.db-shm
 *.db-wal

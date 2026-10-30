@@ -1,0 +1,258 @@
+:root {
+  color-scheme: dark;
+  --hull: #10211c;
+  --piling: #173029;
+  --foam: #edf3ef;
+  --reed: #c5d5ce;
+  --line: #2c463f;
+  --water: #2f8f78;
+  --watch: #d7a15e;
+  --flood: #d4654a;
+  --brass: #e6d3a3;
+  --face: "Iowan Old Style", Palatino, "Palatino Linotype", "Book Antiqua", Georgia, serif;
+  --ui: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
+  font-family: var(--ui);
+  background: var(--hull);
+  color: var(--foam);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    linear-gradient(180deg, rgba(230, 211, 163, 0.05), transparent 12rem),
+    var(--hull);
+}
+
+button,
+input,
+a {
+  font: inherit;
+  color: inherit;
+}
+
+button,
+a {
+  cursor: pointer;
+}
+
+button {
+  border: 1px solid var(--brass);
+  background: transparent;
+  padding: 0.55rem 0.8rem;
+}
+
+button.primary {
+  background: var(--brass);
+  color: #1b1710;
+}
+
+button.quiet {
+  border-color: var(--line);
+  color: var(--reed);
+}
+
+a {
+  color: var(--foam);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2rem;
+}
+
+a[aria-current="page"] {
+  text-decoration-color: var(--brass);
+}
+
+:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 3px;
+}
+
+.shell,
+.gate {
+  width: min(72rem, calc(100% - 2rem));
+  margin: 0 auto;
+  padding: 1.25rem 0 3rem;
+}
+
+.topbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.25rem;
+  align-items: center;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.topbar nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.9rem;
+}
+
+.mark {
+  font-family: var(--face);
+  font-size: 1.35rem;
+  text-decoration: none;
+}
+
+h1,
+h2,
+.figure,
+.secret {
+  font-family: var(--face);
+  font-weight: 500;
+}
+
+h1 {
+  margin: 1.2rem 0 0.3rem;
+  font-size: clamp(2rem, 4vw, 3.4rem);
+  line-height: 1.05;
+  max-width: 16ch;
+}
+
+h2 { margin: 0; font-size: 1.45rem; }
+
+.lede,
+.meta,
+.projection {
+  max-width: 62ch;
+  color: var(--reed);
+  line-height: 1.45;
+}
+
+.board {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.5rem 2rem;
+  margin-top: 1.5rem;
+}
+
+.provider {
+  display: grid;
+  grid-template-columns: 7.5rem 1fr;
+  gap: 1rem;
+  align-items: stretch;
+  padding-top: 0.4rem;
+}
+
+.staff {
+  position: relative;
+  height: 16rem;
+  border: 1px solid var(--brass);
+  background: #0c1916;
+  overflow: hidden;
+}
+
+.staff-water {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: calc(var(--level) * 1%);
+  background: var(--water);
+  transition: height 240ms linear;
+}
+
+.staff[data-tone="watch"] .staff-water { background: var(--watch); }
+.staff[data-tone="flood"] .staff-water { background: var(--flood); }
+
+.staff-mark {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 80%;
+  border-top: 1px dashed var(--brass);
+}
+
+.provider-copy { display: grid; align-content: start; gap: 0.35rem; }
+
+.headline { margin: 0; color: var(--brass); }
+
+.figure {
+  margin: 0.2rem 0;
+  font-size: 3.2rem;
+  line-height: 0.9;
+}
+
+.history,
+.devices,
+.deliveries,
+.provider-copy ul {
+  padding-left: 1.1rem;
+}
+
+.history li,
+.devices li,
+.deliveries li {
+  margin: 0.9rem 0;
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--line);
+}
+
+.stack {
+  display: grid;
+  gap: 0.75rem;
+  max-width: 28rem;
+  margin: 1rem 0;
+}
+
+label { display: grid; gap: 0.3rem; }
+
+label.check {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+input {
+  border: 1px solid var(--line);
+  background: #0c1916;
+  padding: 0.55rem 0.65rem;
+}
+
+.notice,
+.problem,
+.cache {
+  border-left: 3px solid var(--brass);
+  padding-left: 0.7rem;
+}
+
+.problem { border-left-color: var(--flood); }
+.cache { border-left-color: var(--watch); }
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(8, 16, 14, 0.76);
+}
+
+.dialog {
+  width: min(32rem, 100%);
+  padding: 1.2rem;
+  background: var(--piling);
+  border: 1px solid var(--brass);
+}
+
+.secret,
+.command {
+  overflow-wrap: anywhere;
+  font-family: var(--face);
+}
+
+.gate-title { font-size: clamp(2.4rem, 6vw, 4.4rem); }
+
+@media (max-width: 720px) {
+  .board,
+  .provider { grid-template-columns: 1fr; }
+  .staff { height: 9rem; }
+  .topbar button { margin-left: auto; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .staff-water { transition: none; }
+}

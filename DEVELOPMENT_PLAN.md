@@ -1,6 +1,6 @@
 # Plano de desenvolvimento — Rastreador de uso de IA
 
-**Status:** proposta inicial; implementação ainda não iniciada.
+**Status:** MVP pessoal validado em 2026-10-30. O código publicado ainda é a fatia de um operador. A etapa seguinte é conta para outras pessoas, em `docs/adr/0005-fim-do-mvp-pessoal.md`.
 
 **Nome do repositório:** funcional/provisório.
 
@@ -67,6 +67,8 @@ O produto público não pode depender do Sabiá, um gateway de acesso privado. C
 - `event-routing-platform` roteia eventos de analytics e `alert-manager` trata alertas de monitoramento; nenhum substitui a jornada de consumo de IA nem os adapters de e-mail próprios deste app.
 
 ## Ciphera — integração como secret store (não KMS)
+
+O ADR 0007 coloca o Ciphera como um backend opcional do porto de segredo, ao lado do cofre próprio, do HashiCorp Vault (KV), do AWS Secrets Manager e do Infisical. O contrato desta seção continua valendo para o adapter Ciphera. Uma instalação não precisa dele para subir.
 
 Ciphera é uma integração opcional de gestão de segredos com envelope encryption interno, KEKs configuradas no servidor e DEKs por projeto. O contrato avaliado lê segredos autorizados e devolve o valor plaintext ao cliente; não fornece operações remotas `wrap/unwrap` nem API KMS/HSM documentadas. Ciphera protege segredos que armazena, não cifra dados arbitrários em nome deste app. A instalação pública não deve exigir acesso a um serviço privado: manter o contrato de armazenamento seguro explícito e validar a disponibilidade da integração antes de habilitá-la.
 
@@ -150,5 +152,15 @@ Não extrair um serviço de notificações: a decisão de alertar e os adapters 
 - Se manter um adapter opcional Sabiá para instalações privadas e qual contrato de estado final de entrega estará disponível.
 - Se Web Push fica neste app no MVP; neste plano ele começa como adapter estreito do rastreador.
 - Se a API do CodexBar já cobre os coletores necessários; ordem dos provedores após Claude/Codex.
-- Política de disponibilidade/cache quando Ciphera está indisponível ou o segredo expirou do cache.
+- Política de disponibilidade/cache quando o backend ativo de segredos está indisponível ou o segredo expirou do cache. A escolha dos backends está no ADR 0007.
 - Stack/versões exatas, política de retenção e momento de abrir a terceiros.
+
+### Ponteiro de 2026-10-29
+
+A fatia 1 fechou, para o uso pessoal, a stack, as fontes locais, o contrato da amostra e o Web Push estreito. Ver `docs/adr/0001-stack-do-mvp-pessoal.md`, `docs/adr/0002-fontes-locais-claude-codex.md`, `docs/adr/0003-amostra-dispositivo-e-historico.md`, `docs/adr/0004-web-push-estreito.md` e `docs/source-inspection.md`.
+
+Continuam abertas: escopo BYOK de e-mail, detalhes de MillionSend, Cloudflare Email e SES, adapter opcional do Sabiá, cache do backend ativo de segredos, retenção além de manter o histórico, termos do lançamento público e cobrança. CodexBar não é fonte da fatia pessoal. O porto e os backends nomeados estão no ADR 0007; nenhum cliente desses cofres está implementado.
+
+### Validação pessoal — 2026-10-30
+
+Quem usou o produto encerrou o MVP pessoal. O critério de duas semanas no celular não bloqueia mais o avanço. O próximo desenho está no ADR 0005: segredo de setup só para o administrador, conta por pessoa e código de pareamento só para o agente. Os logins configuráveis, Gitea, GitHub, Google e Apple, estão no ADR 0006. Os cofres da instalação estão no ADR 0007. O aplicativo em execução ainda não tem essas contas nem esses clientes.

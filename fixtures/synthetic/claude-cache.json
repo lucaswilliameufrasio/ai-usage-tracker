@@ -1,0 +1,22 @@
+{
+  "oauthAccount": {
+    "access_token": "CANARY_TOKEN"
+  },
+  "prompt": "CANARY_PROMPT",
+  "transcript_path": "/home/canary/secret-project/file.txt",
+  "cachedUsageUtilization": {
+    "accountUuid": "acct_canary_uuid",
+    "fetchedAtMs": 1761742800000,
+    "utilization": {
+      "five_hour": {
+        "utilization": 86,
+        "resets_at": "2026-10-29T15:30:00Z"
+      },
+      "seven_day": {
+        "utilization": 40,
+        "resets_at": "2026-11-05T15:00:00Z"
+      },
+      "amber_cistern": null
+    }
+  }
+}

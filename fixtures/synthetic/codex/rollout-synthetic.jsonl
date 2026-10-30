@@ -1,0 +1,3 @@
+{"timestamp":"2026-10-29T14:00:00Z","type":"event_msg","payload":{"type":"user_message","prompt":"CANARY_PROMPT","path":"/home/canary/secret-project/file.txt","token":"CANARY_TOKEN"}}
+{"timestamp":"2026-10-29T14:05:00Z","type":"event_msg","payload":{"type":"token_count","rate_limits":null}}
+{"timestamp":"2026-10-29T15:00:00Z","type":"event_msg","payload":{"type":"token_count","rate_limits":{"limit_id":"codex","plan_type":"pro","primary":{"used_percent":25,"window_minutes":300,"resets_at":1761751800},"secondary":{"used_percent":12,"window_minutes":10080,"resets_at":1762354800}}}}

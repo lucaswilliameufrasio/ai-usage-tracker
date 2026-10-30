@@ -86,7 +86,7 @@ func run(args []string) {
 		})
 		return
 	case modeExecute:
-		execute(saved)
+		executeLoop(saved)
 		return
 	case modeNeedTerminal:
 		fmt.Fprintln(os.Stderr, "Rode num terminal para configurar o agente, ou informe --api, --token-file e uma fonte.")
@@ -149,12 +149,20 @@ func finishSetup(saved agent.File, paths agent.Paths) {
 }
 
 func execute(file agent.File) {
+	os.Exit(runOnce(context.Background(), file))
+}
+
+func runOnce(ctx context.Context, file agent.File) int {
+	result, err := runFile(ctx, file)
+	return report(result, err)
+}
+
+func runFile(ctx context.Context, file agent.File) (agent.Result, error) {
 	raw, err := os.ReadFile(file.TokenFile)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "token ilegível")
-		os.Exit(1)
+		return agent.Result{}, errToken
 	}
-	result, err := agent.Run(context.Background(), agent.Config{
+	return agent.Run(ctx, agent.Config{
 		API:          file.API,
 		Token:        string(trim(raw)),
 		SpoolPath:    file.Spool,
@@ -163,21 +171,29 @@ func execute(file agent.File) {
 		CodexCommand: codexBinary(file.CodexDir),
 		Now:          time.Now().UTC(),
 	})
+}
+
+func report(result agent.Result, err error) int {
 	if result.CodexLive == "read" {
 		fmt.Fprintln(os.Stderr, "codex lido pelo comando local")
 	}
 	if result.CodexLive == "fallback" {
 		fmt.Fprintln(os.Stderr, "codex ao vivo indisponível; a observação do arquivo foi mantida")
 	}
+	if errors.Is(err, errToken) {
+		fmt.Fprintln(os.Stderr, "token ilegível")
+		return 1
+	}
 	if err != nil && !result.Blocked {
 		fmt.Fprintln(os.Stderr, "envio incompleto; a fila local foi preservada")
-		os.Exit(1)
+		return 1
 	}
 	if result.Blocked {
 		fmt.Fprintln(os.Stderr, "dispositivo revogado; a fila não será reenviada com esta credencial")
-		os.Exit(3)
+		return 3
 	}
 	fmt.Fprintf(os.Stderr, "aceitas %d duplicadas %d rejeitadas %d pendentes %d\n", result.Accepted, result.Duplicate, result.Rejected, result.Pending)
+	return 0
 }
 
 func codexBinary(dir string) string {

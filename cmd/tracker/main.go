@@ -11,12 +11,15 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
+	"ai-usage-tracker/internal/access"
 	"ai-usage-tracker/internal/httpapi"
 	"ai-usage-tracker/internal/push"
 	"ai-usage-tracker/internal/store"
+	"ai-usage-tracker/internal/vault"
 )
 
 func main() {
@@ -41,6 +44,39 @@ func main() {
 		logger.Error("vapid")
 		os.Exit(1)
 	}
+	loginEnv := access.ReadEnv(os.Getenv)
+	var box vault.Box
+	rawKey := strings.TrimSpace(os.Getenv("TRACKER_VAULT_KEY"))
+	if rawKey != "" {
+		key, err := vault.DecodeKey(rawKey)
+		if err != nil {
+			logger.Error("cofre", "err", "chave")
+			os.Exit(1)
+		}
+		opened, err := vault.OpenOwn(filepath.Join(*data, "vault"), key)
+		for i := range key {
+			key[i] = 0
+		}
+		if err != nil {
+			logger.Error("cofre", "err", "abrir")
+			os.Exit(1)
+		}
+		box = opened
+	}
+	if access.EnvTouched(loginEnv) {
+		if box == nil {
+			logger.Error("login", "err", "cofre fechado")
+			os.Exit(1)
+		}
+		if err := access.Seed(context.Background(), db, box, loginEnv, time.Now().UTC()); err != nil {
+			if errors.Is(err, access.ErrIncomplete) {
+				logger.Error("login", "err", "ambiente incompleto")
+			} else {
+				logger.Error("login", "err", "semeadura")
+			}
+			os.Exit(1)
+		}
+	}
 	server := &httpapi.Server{
 		Store:          db,
 		Sender:         sender,
@@ -48,6 +84,7 @@ func main() {
 		SetupToken:     os.Getenv("TRACKER_SETUP_TOKEN"),
 		WebDir:         *web,
 		Logger:         logger,
+		Vault:          box,
 	}
 	httpServer := &http.Server{
 		Addr:              *addr,

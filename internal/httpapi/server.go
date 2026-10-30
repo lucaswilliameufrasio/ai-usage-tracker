@@ -20,9 +20,11 @@ import (
 	"ai-usage-tracker/internal/apierr"
 	"ai-usage-tracker/internal/contract"
 	"ai-usage-tracker/internal/freshness"
+	"ai-usage-tracker/internal/login"
 	"ai-usage-tracker/internal/push"
 	"ai-usage-tracker/internal/store"
 	"ai-usage-tracker/internal/token"
+	"ai-usage-tracker/internal/vault"
 )
 
 const maxBody = 16 << 10
@@ -35,6 +37,8 @@ type Server struct {
 	SetupToken     string
 	WebDir         string
 	Logger         *slog.Logger
+	Vault          vault.Box
+	Login          *login.Flow
 }
 
 func (s *Server) Handler() http.Handler {
@@ -62,6 +66,21 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/push/subscriptions", s.operator(s.listSubscriptions))
 	mux.HandleFunc("DELETE /v1/push/subscriptions/{id}", s.operator(s.deleteSubscription))
 	mux.HandleFunc("GET /v1/push/deliveries", s.operator(s.listDeliveries))
+	mux.HandleFunc("GET /v1/admin/secret-backend", s.operator(s.getSecretBackend))
+	mux.HandleFunc("PUT /v1/admin/secret-backend", s.operator(s.putSecretBackend))
+	mux.HandleFunc("GET /v1/admin/login-providers", s.operator(s.listLoginProviders))
+	mux.HandleFunc("PUT /v1/admin/login-providers/{provider}", s.operator(s.putLoginProvider))
+	mux.HandleFunc("DELETE /v1/admin/login-providers/{provider}", s.operator(s.deleteLoginProvider))
+	mux.HandleFunc("GET /v1/login/providers", s.publicLogins)
+	mux.HandleFunc("GET /v1/login/{provider}/start", s.loginStart)
+	mux.HandleFunc("GET /v1/login/{provider}/callback", s.loginCallback)
+	mux.HandleFunc("GET /v1/session", s.currentSession)
+	mux.HandleFunc("POST /v1/session/logout", s.logout)
+	mux.HandleFunc("POST /v1/account/enrollment-codes", s.person(s.accountEnrollment))
+	mux.HandleFunc("GET /v1/account/devices", s.person(s.accountDevices))
+	mux.HandleFunc("POST /v1/account/devices/{id}/revoke", s.person(s.accountRevoke))
+	mux.HandleFunc("GET /v1/account/overview", s.person(s.accountOverview))
+	mux.HandleFunc("GET /v1/account/samples", s.person(s.accountSamples))
 	mux.HandleFunc("/", s.ui)
 	return s.recover(s.log(mux))
 }
@@ -97,13 +116,17 @@ func (s *Server) setup(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) createEnrollment(w http.ResponseWriter, _ *http.Request) {
+	s.writeEnrollment(w, "")
+}
+
+func (s *Server) writeEnrollment(w http.ResponseWriter, accountID string) {
 	raw, err := token.New("enr_")
 	if err != nil {
 		apierr.Write(w, err)
 		return
 	}
 	expires := s.Now().Add(15 * time.Minute)
-	if err := s.Store.CreateEnrollment(token.Hash(raw), expires); err != nil {
+	if err := s.Store.CreateEnrollment(token.Hash(raw), accountID, expires); err != nil {
 		apierr.Write(w, err)
 		return
 	}
@@ -170,6 +193,10 @@ func (s *Server) listDevices(w http.ResponseWriter, _ *http.Request) {
 		apierr.Write(w, err)
 		return
 	}
+	writeDevices(w, devices)
+}
+
+func writeDevices(w http.ResponseWriter, devices []store.Device) {
 	data := make([]map[string]any, 0, len(devices))
 	for _, device := range devices {
 		item := map[string]any{
@@ -253,6 +280,10 @@ func (s *Server) ingestReport(w http.ResponseWriter, r *http.Request, device sto
 }
 
 func (s *Server) listSamples(w http.ResponseWriter, r *http.Request) {
+	s.writeSamples(w, r, "")
+}
+
+func (s *Server) writeSamples(w http.ResponseWriter, r *http.Request, accountID string) {
 	provider := r.URL.Query().Get("provider")
 	if provider != "" && provider != contract.ProviderClaude && provider != contract.ProviderCodex {
 		apierr.Write(w, apierr.Invalid([]apierr.FieldError{{Field: "provider", Message: "Provedor deve ser claude ou codex."}}))
@@ -278,7 +309,7 @@ func (s *Server) listSamples(w http.ResponseWriter, r *http.Request) {
 		cursorTime = decoded.received
 		cursorID = decoded.id
 	}
-	records, err := s.Store.ListSamples(provider, cursorTime, cursorID, limit+1)
+	records, err := s.listedSamples(accountID, provider, cursorTime, cursorID, limit+1)
 	if err != nil {
 		apierr.Write(w, err)
 		return
@@ -303,6 +334,11 @@ func (s *Server) listSamples(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) overview(w http.ResponseWriter, _ *http.Request) {
+	s.writeOverview(w, "")
+}
+
+// accountID vazio lê a instalação inteira. A pessoa passa o id da própria conta.
+func (s *Server) writeOverview(w http.ResponseWriter, accountID string) {
 	settings, err := s.Store.Settings()
 	if err != nil {
 		apierr.Write(w, err)
@@ -312,7 +348,7 @@ func (s *Server) overview(w http.ResponseWriter, _ *http.Request) {
 	providers := make([]map[string]any, 0, 2)
 	for _, provider := range []string{contract.ProviderClaude, contract.ProviderCodex} {
 		var sample *contract.Sample
-		record, err := s.Store.LatestSample(provider)
+		record, err := s.latestSample(accountID, provider)
 		if err == nil {
 			copied := record.Sample
 			sample = &copied
@@ -321,7 +357,7 @@ func (s *Server) overview(w http.ResponseWriter, _ *http.Request) {
 			return
 		}
 		var report *contract.SourceReport
-		reportRecord, err := s.Store.LatestReport(provider)
+		reportRecord, err := s.latestReport(accountID, provider)
 		if err == nil {
 			copied := reportRecord.Report
 			report = &copied
@@ -329,7 +365,7 @@ func (s *Server) overview(w http.ResponseWriter, _ *http.Request) {
 			apierr.Write(w, err)
 			return
 		}
-		history, err := s.Store.RecentSamples(provider, 8)
+		history, err := s.recentSamples(accountID, provider, 8)
 		if err != nil {
 			apierr.Write(w, err)
 			return
@@ -675,11 +711,21 @@ func (s *Server) ui(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	info, err := os.Stat(abs)
+	if err == nil && !info.IsDir() {
+		http.ServeFile(w, r, abs)
+		return
+	}
+	if filepath.Ext(rel) != "" {
+		http.NotFound(w, r)
+		return
+	}
+	index := filepath.Join(root, "index.html")
+	info, err = os.Stat(index)
 	if err != nil || info.IsDir() {
 		http.NotFound(w, r)
 		return
 	}
-	http.ServeFile(w, r, abs)
+	http.ServeFile(w, r, index)
 }
 
 func (s *Server) operator(next http.HandlerFunc) http.HandlerFunc {

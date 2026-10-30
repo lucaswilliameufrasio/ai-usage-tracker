@@ -45,6 +45,21 @@ func TestStaticShellDoesNotEscapeWebDir(t *testing.T) {
 			t.Fatalf("%s vazou o arquivo externo", path)
 		}
 	}
+	for _, path := range []string{"/acesso", "/historico", "/dispositivos", "/alertas", "/access"} {
+		response := get(t, handler, path)
+		body := readAll(t, response)
+		if response.StatusCode != http.StatusOK || body != "SHELL" {
+			t.Fatalf("%s => %d %s", path, response.StatusCode, body)
+		}
+	}
+	missing := get(t, handler, "/assets/ausente.js")
+	if missing.StatusCode == http.StatusOK || strings.Contains(readAll(t, missing), "SHELL") {
+		t.Fatalf("asset ausente devolveu o shell")
+	}
+	api := get(t, handler, "/v1/inexistente")
+	if api.StatusCode == http.StatusOK || strings.Contains(readAll(t, api), "SHELL") {
+		t.Fatalf("rota de API devolveu o shell")
+	}
 }
 
 func TestSetupTokenIsRequiredWhenConfigured(t *testing.T) {

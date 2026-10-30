@@ -3,8 +3,13 @@ import { describe, it } from "node:test";
 
 import {
   deliveryLabel,
+  loginCallbackPath,
+  loginGuide,
+  parseLoginCatalog,
+  parseLoginProvider,
   parseOverview,
   parseRoute,
+  screenPath,
   projectionCopy,
   readingCopy,
   staffTone,
@@ -12,10 +17,88 @@ import {
 
 describe("rotas", () => {
   it("reconhece os quatro destinos", () => {
-    assert.equal(parseRoute(""), "overview");
-    assert.equal(parseRoute("#/historico"), "history");
-    assert.equal(parseRoute("#/dispositivos"), "devices");
-    assert.equal(parseRoute("#/alertas"), "alerts");
+    assert.equal(parseRoute("/"), "overview");
+    assert.equal(parseRoute("/historico"), "history");
+    assert.equal(parseRoute("/dispositivos"), "devices");
+    assert.equal(parseRoute("/alertas"), "alerts");
+    assert.equal(parseRoute("/acesso"), "access");
+    assert.equal(parseRoute("/history"), "history");
+    assert.equal(parseRoute("/outro"), "overview");
+    assert.equal(parseRoute("/", "#/acesso"), "access");
+    assert.equal(parseRoute("/historico", "#/"), "overview");
+    assert.equal(parseRoute("/historico", "#/desconhecido"), "history");
+    assert.equal(screenPath("overview"), "/");
+    assert.equal(screenPath("history"), "/historico");
+    assert.equal(screenPath("devices"), "/dispositivos");
+    assert.equal(screenPath("alerts"), "/alertas");
+    assert.equal(screenPath("access"), "/acesso");
+  });
+});
+
+describe("acesso", () => {
+  it("não copia o segredo para a tela", () => {
+    const secret = "sintetico-segredo-github";
+    const parsed = parseLoginCatalog({
+      data: [
+        {
+          provider: "github",
+          enabled: true,
+          configured: true,
+          secret_present: true,
+          client_id: "id-pub",
+          secret,
+          updated_at: "2026-10-30T12:00:00Z",
+        },
+        { provider: "gitea", enabled: false, configured: false, secret_present: false },
+        { provider: "google", enabled: false, configured: false, secret_present: false },
+        { provider: "apple", enabled: false, configured: false, secret_present: false },
+      ],
+    });
+    assert.equal(parsed.ok, true);
+    if (!parsed.ok) {
+      return;
+    }
+    const github = parsed.value[0];
+    assert.equal(github?.provider, "github");
+    assert.equal(github?.secretPresent, true);
+    assert.equal(github?.clientId, "id-pub");
+    assert.equal(JSON.stringify(parsed.value).includes(secret), false);
+    const one = parseLoginProvider({
+      provider: "gitea",
+      enabled: true,
+      configured: true,
+      secret_present: true,
+      client_id: "gitea-id",
+      issuer_url: "https://git.example",
+      secret,
+    });
+    assert.equal(one.ok, true);
+    if (!one.ok) {
+      return;
+    }
+    assert.equal(one.value.issuerUrl, "https://git.example");
+    assert.equal(JSON.stringify(one.value).includes(secret), false);
+  });
+
+  it("explica onde obter cada valor e mostra um exemplo", () => {
+    const github = loginGuide("github");
+    const gitea = loginGuide("gitea");
+    const google = loginGuide("google");
+    const apple = loginGuide("apple");
+    assert.equal(github?.steps.join(" ").includes("OAuth App"), true);
+    assert.equal(github?.steps.join(" ").includes("GitHub App"), true);
+    assert.equal(github?.example.includes("Iv1.exemploNaoUsar"), true);
+    assert.equal(gitea?.example.includes("https://git.exemplo.com"), true);
+    assert.equal(google?.example.includes(".apps.googleusercontent.com"), true);
+    assert.equal(apple?.steps.join(" ").includes("BEGIN PRIVATE KEY"), true);
+    assert.equal(apple?.example.includes("-----BEGIN PRIVATE KEY-----"), true);
+    assert.equal(apple?.example.includes("JWT"), false);
+    assert.equal(loginGuide("outro"), undefined);
+    assert.equal(loginCallbackPath("github"), "/v1/login/github/callback");
+    assert.equal(loginCallbackPath("gitea"), "/v1/login/gitea/callback");
+    assert.equal(loginCallbackPath("google"), "/v1/login/google/callback");
+    assert.equal(loginCallbackPath("apple"), "/v1/login/apple/callback");
+    assert.equal(loginCallbackPath("outro"), undefined);
   });
 });
 

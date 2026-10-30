@@ -25,6 +25,8 @@ const (
 	CodePushUnconfigured  = "PUSH_UNCONFIGURED"
 	CodeUnexpected        = "UNEXPECTED_ERROR"
 	CodeSetupRequired     = "SETUP_TOKEN_REQUIRED"
+	CodeLastLogin         = "LAST_LOGIN_METHOD"
+	CodeVaultUnavailable  = "VAULT_UNAVAILABLE"
 )
 
 type FieldError struct {

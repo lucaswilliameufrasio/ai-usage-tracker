@@ -1,6 +1,6 @@
 # Plano de desenvolvimento — Rastreador de uso de IA
 
-**Status:** MVP pessoal validado em 2026-10-30. O código publicado ainda é a fatia de um operador. A etapa seguinte é conta para outras pessoas, em `docs/adr/0005-fim-do-mvp-pessoal.md`.
+**Status:** MVP pessoal validado em 2026-10-30. Conta, sessão e retorno do login estão no código, em `docs/adr/0008-sessao-e-retorno-do-login.md`. Cofres externos, termos públicos e cobrança continuam fora.
 
 **Nome do repositório:** funcional/provisório.
 
@@ -159,8 +159,8 @@ Não extrair um serviço de notificações: a decisão de alertar e os adapters 
 
 A fatia 1 fechou, para o uso pessoal, a stack, as fontes locais, o contrato da amostra e o Web Push estreito. Ver `docs/adr/0001-stack-do-mvp-pessoal.md`, `docs/adr/0002-fontes-locais-claude-codex.md`, `docs/adr/0003-amostra-dispositivo-e-historico.md`, `docs/adr/0004-web-push-estreito.md` e `docs/source-inspection.md`.
 
-Continuam abertas: escopo BYOK de e-mail, detalhes de MillionSend, Cloudflare Email e SES, adapter opcional do Sabiá, cache do backend ativo de segredos, retenção além de manter o histórico, termos do lançamento público e cobrança. CodexBar não é fonte da fatia pessoal. O porto e os backends nomeados estão no ADR 0007; nenhum cliente desses cofres está implementado.
+Continuam abertas: escopo BYOK de e-mail, detalhes de MillionSend, Cloudflare Email e SES, adapter opcional do Sabiá, cache do backend ativo de segredos, retenção além de manter o histórico, termos do lançamento público e cobrança. CodexBar não é fonte da fatia pessoal. O porto e o cofre próprio estão implementados (ADR 0007). Ciphera, HashiCorp Vault, AWS Secrets Manager e Infisical continuam sem adapter. O retorno dos quatro provedores e a sessão da pessoa estão implementados (ADR 0008).
 
 ### Validação pessoal — 2026-10-30
 
-Quem usou o produto encerrou o MVP pessoal. O critério de duas semanas no celular não bloqueia mais o avanço. O próximo desenho está no ADR 0005: segredo de setup só para o administrador, conta por pessoa e código de pareamento só para o agente. Os logins configuráveis, Gitea, GitHub, Google e Apple, estão no ADR 0006. Os cofres da instalação estão no ADR 0007. O aplicativo em execução ainda não tem essas contas nem esses clientes.
+Quem usou o produto encerrou o MVP pessoal. O critério de duas semanas no celular não bloqueia mais o avanço. O ADR 0005 separa o administrador das outras pessoas. Os logins configuráveis estão no ADR 0006 e os cofres no ADR 0007. O aplicativo tem conta por pessoa, sessão por cookie e a URL de retorno `/v1/login/{provider}/callback` (ADR 0008). As telas do PWA usam pathname, e o mesmo processo devolve o shell (ADR 0009). O administrador continua em Acesso. Os cofres externos ainda não entram.

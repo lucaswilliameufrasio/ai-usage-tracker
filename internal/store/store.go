@@ -21,6 +21,9 @@ var (
 	ErrEnrollmentExpired = errors.New("enrollment expired")
 	ErrEnrollmentUsed    = errors.New("enrollment used")
 	ErrRateLimited       = errors.New("rate limited")
+	ErrLastLogin         = errors.New("last login")
+	ErrLoginState        = errors.New("login state")
+	ErrLoginExpired      = errors.New("login expired")
 )
 
 const observationCap = 240
@@ -104,9 +107,30 @@ func (s *Store) migrate() error {
 	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
 		return fmt.Errorf("ler versão: %w", err)
 	}
-	if version > 0 {
-		return nil
+	if version > 3 {
+		return fmt.Errorf("sqlite user_version %d não é suportada", version)
 	}
+	if version < 1 {
+		if err := s.migrateV1(); err != nil {
+			return err
+		}
+		version = 1
+	}
+	if version < 2 {
+		if err := s.migrateV2(); err != nil {
+			return err
+		}
+		version = 2
+	}
+	if version < 3 {
+		if err := s.migrateV3(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Store) migrateV1() error {
 	schema := `
 CREATE TABLE operator (
   id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -184,6 +208,79 @@ CREATE INDEX reports_provider_observed ON source_reports(provider, observed_at D
 	return nil
 }
 
+func (s *Store) migrateV2() error {
+	schema := `
+CREATE TABLE secret_backend (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  kind TEXT NOT NULL
+);
+CREATE TABLE login_providers (
+  provider TEXT PRIMARY KEY,
+  enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+  client_id TEXT NOT NULL,
+  issuer_url TEXT NOT NULL,
+  team_id TEXT NOT NULL,
+  key_id TEXT NOT NULL,
+  services_id TEXT NOT NULL,
+  secret_ref TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+INSERT INTO secret_backend(id, kind) VALUES (1, 'own');
+`
+	if _, err := s.db.Exec(schema); err != nil {
+		return fmt.Errorf("migrar cofre: %w", err)
+	}
+	if _, err := s.db.Exec(`PRAGMA user_version = 2`); err != nil {
+		return fmt.Errorf("gravar versão: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) migrateV3() error {
+	schema := `
+CREATE TABLE accounts (
+  id TEXT PRIMARY KEY,
+  provider TEXT NOT NULL,
+  subject TEXT NOT NULL,
+  contact TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  UNIQUE(provider, subject)
+);
+CREATE TABLE login_attempts (
+  id TEXT PRIMARY KEY,
+  state_hash TEXT NOT NULL UNIQUE,
+  provider TEXT NOT NULL,
+  nonce TEXT NOT NULL,
+  code_verifier TEXT NOT NULL,
+  client_id TEXT NOT NULL,
+  issuer_url TEXT NOT NULL,
+  team_id TEXT NOT NULL,
+  key_id TEXT NOT NULL,
+  services_id TEXT NOT NULL,
+  secret_ref TEXT NOT NULL,
+  redirect_uri TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  used_at TEXT
+);
+CREATE TABLE sessions (
+  token_hash TEXT PRIMARY KEY,
+  account_id TEXT NOT NULL REFERENCES accounts(id),
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  revoked_at TEXT
+);
+ALTER TABLE enrollment_codes ADD COLUMN account_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE devices ADD COLUMN account_id TEXT NOT NULL DEFAULT '';
+`
+	if _, err := s.db.Exec(schema); err != nil {
+		return fmt.Errorf("migrar contas: %w", err)
+	}
+	if _, err := s.db.Exec(`PRAGMA user_version = 3`); err != nil {
+		return fmt.Errorf("gravar versão: %w", err)
+	}
+	return nil
+}
+
 func (s *Store) Setup(tokenHash string, now time.Time) error {
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -215,8 +312,8 @@ func (s *Store) OperatorHash() (string, error) {
 	return hash, err
 }
 
-func (s *Store) CreateEnrollment(codeHash string, expires time.Time) error {
-	_, err := s.db.Exec(`INSERT INTO enrollment_codes(code_hash, expires_at) VALUES (?, ?)`, codeHash, formatTime(expires))
+func (s *Store) CreateEnrollment(codeHash string, accountID string, expires time.Time) error {
+	_, err := s.db.Exec(`INSERT INTO enrollment_codes(code_hash, expires_at, account_id) VALUES (?, ?, ?)`, codeHash, formatTime(expires), accountID)
 	return err
 }
 
@@ -228,7 +325,8 @@ func (s *Store) Enroll(codeHash string, deviceID string, name string, tokenHash 
 	defer func() { _ = tx.Rollback() }()
 	var expiresText string
 	var used sql.NullString
-	err = tx.QueryRow(`SELECT expires_at, used_at FROM enrollment_codes WHERE code_hash = ?`, codeHash).Scan(&expiresText, &used)
+	var accountID string
+	err = tx.QueryRow(`SELECT expires_at, used_at, account_id FROM enrollment_codes WHERE code_hash = ?`, codeHash).Scan(&expiresText, &used, &accountID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrEnrollmentInvalid
 	}
@@ -248,7 +346,7 @@ func (s *Store) Enroll(codeHash string, deviceID string, name string, tokenHash 
 	if _, err := tx.Exec(`UPDATE enrollment_codes SET used_at = ? WHERE code_hash = ?`, formatTime(now), codeHash); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(`INSERT INTO devices(id, name, token_hash, created_at) VALUES (?, ?, ?, ?)`, deviceID, name, tokenHash, formatTime(now)); err != nil {
+	if _, err := tx.Exec(`INSERT INTO devices(id, name, token_hash, created_at, account_id) VALUES (?, ?, ?, ?, ?)`, deviceID, name, tokenHash, formatTime(now), accountID); err != nil {
 		return err
 	}
 	return tx.Commit()

@@ -28,6 +28,7 @@ body {
 
 button,
 input,
+textarea,
 a {
   font: inherit;
   color: inherit;
@@ -62,6 +63,22 @@ a {
 
 a[aria-current="page"] {
   text-decoration-color: var(--brass);
+}
+
+a.enter {
+  display: inline-block;
+  border: 1px solid var(--brass);
+  background: var(--brass);
+  color: #1b1710;
+  text-decoration: none;
+  padding: 0.55rem 0.8rem;
+}
+
+.choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 0 0 1.25rem;
 }
 
 :focus-visible {
@@ -198,6 +215,54 @@ h2 { margin: 0; font-size: 1.45rem; }
   margin: 1rem 0;
 }
 
+.access-form {
+  max-width: 42rem;
+  margin-top: 1.4rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+}
+
+.guide {
+  display: grid;
+  gap: 0.45rem;
+  color: var(--reed);
+}
+
+.guide h3 {
+  margin: 0.4rem 0 0;
+  color: var(--brass);
+  font-size: 0.82rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.guide ol {
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.guide li {
+  margin: 0.28rem 0;
+}
+
+.callback {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, "Cascadia Code", "Source Code Pro", monospace;
+}
+
+.example {
+  margin: 0;
+  padding: 0.7rem 0.8rem;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  border: 1px solid var(--line);
+  background: #0c1916;
+  color: var(--foam);
+  font-family: ui-monospace, "Cascadia Code", "Source Code Pro", monospace;
+  font-size: 0.85rem;
+}
+
 label { display: grid; gap: 0.3rem; }
 
 label.check {
@@ -206,10 +271,17 @@ label.check {
   align-items: center;
 }
 
-input {
+input,
+textarea {
   border: 1px solid var(--line);
   background: #0c1916;
   padding: 0.55rem 0.65rem;
+}
+
+textarea {
+  resize: vertical;
+  min-height: 8rem;
+  white-space: pre;
 }
 
 .notice,

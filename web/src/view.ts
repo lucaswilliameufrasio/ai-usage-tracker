@@ -1,7 +1,27 @@
 export const operatorTokenKey = "tracker.operator_token";
 export const overviewCacheKey = "tracker.overview.cache";
 
-export type RouteName = "overview" | "history" | "devices" | "alerts";
+export type RouteName = "overview" | "history" | "devices" | "alerts" | "access";
+
+export type LoginProviderName = "github" | "gitea" | "google" | "apple";
+
+export type LoginProviderView = {
+  provider: LoginProviderName;
+  enabled: boolean;
+  configured: boolean;
+  secretPresent: boolean;
+  clientId?: string;
+  issuerUrl?: string;
+  teamId?: string;
+  keyId?: string;
+  servicesId?: string;
+  updatedAt?: string;
+};
+
+export type SecretBackendView = {
+  kind: string;
+  ready: boolean;
+};
 
 export type WindowView = {
   name: string;
@@ -92,10 +112,56 @@ export type ReadingCopy = {
   showAsCurrent: boolean;
 };
 
-export function parseRoute(hash: string): RouteName {
-  const raw = hash.startsWith("#") ? hash.slice(1) : hash;
-  const path = raw.startsWith("/") ? raw.slice(1) : raw;
-  const name = path.split("/")[0] ?? "";
+export function screenPath(route: RouteName): string {
+  if (route === "history") {
+    return "/historico";
+  }
+  if (route === "devices") {
+    return "/dispositivos";
+  }
+  if (route === "alerts") {
+    return "/alertas";
+  }
+  if (route === "access") {
+    return "/acesso";
+  }
+  return "/";
+}
+
+export function parseRoute(pathname: string, hash = ""): RouteName {
+  const legacy = legacyRoute(hash);
+  if (legacy !== undefined) {
+    return legacy;
+  }
+  return pathRoute(pathname);
+}
+
+function legacyRoute(hash: string): RouteName | undefined {
+  if (!hash.startsWith("#")) {
+    return undefined;
+  }
+  const body = hash.slice(1);
+  if (body === "" || body === "/") {
+    return "overview";
+  }
+  return namedRoute(firstSegment(body));
+}
+
+function pathRoute(pathname: string): RouteName {
+  const route = namedRoute(firstSegment(pathname));
+  if (route === undefined) {
+    return "overview";
+  }
+  return route;
+}
+
+function firstSegment(value: string): string {
+  const raw = value.startsWith("/") ? value.slice(1) : value;
+  const name = raw.split("/")[0] ?? "";
+  return name;
+}
+
+function namedRoute(name: string): RouteName | undefined {
   if (name === "historico" || name === "history") {
     return "history";
   }
@@ -105,7 +171,194 @@ export function parseRoute(hash: string): RouteName {
   if (name === "alertas" || name === "alerts") {
     return "alerts";
   }
-  return "overview";
+  if (name === "acesso" || name === "access") {
+    return "access";
+  }
+  return undefined;
+}
+
+const loginProviders: LoginProviderName[] = ["github", "gitea", "google", "apple"];
+
+export type LoginGuide = {
+  steps: string[];
+  example: string;
+};
+
+const loginGuides: Record<LoginProviderName, LoginGuide> = {
+  github: {
+    steps: [
+      "No GitHub, abra Settings, Developer settings, OAuth Apps e crie um OAuth App. Não crie um GitHub App.",
+      "Copie o Client ID que aparece na página do aplicativo.",
+      "Gere um client secret. O GitHub mostra esse valor uma vez.",
+    ],
+    example: "Client id: Iv1.exemploNaoUsar\nSegredo: exemplo-segredo-github",
+  },
+  gitea: {
+    steps: [
+      "No Gitea, abra Configurações, Aplicativos, e crie um aplicativo OAuth2.",
+      "A URL base é o endereço do Gitea, com http ou https, sem usuário e sem caminho.",
+      "Copie o Client ID e o Client Secret da página do aplicativo.",
+    ],
+    example: "URL base: https://git.exemplo.com\nClient id: 7c9e1a20-0000-4000-8000-000000000000\nSegredo: exemplo-segredo-gitea",
+  },
+  google: {
+    steps: [
+      "No Google Cloud Console, abra Credenciais e crie um ID do cliente OAuth do tipo Aplicativo da Web.",
+      "Copie o ID do cliente. Ele termina em .apps.googleusercontent.com.",
+      "Copie o segredo do cliente mostrado na criação.",
+    ],
+    example: "Client id: 000000000000-exemplo.apps.googleusercontent.com\nSegredo: exemplo-segredo-google",
+  },
+  apple: {
+    steps: [
+      "Em developer.apple.com, o Team ID fica no canto da conta. São 10 letras e números.",
+      "Crie um Services ID. Esse identificador é o client id. O campo Client id desta tela pode ficar vazio.",
+      "Em Keys, crie uma chave com Sign in with Apple. Anote o Key ID. Baixe o .p8 nessa hora: a Apple não deixa baixar de novo.",
+      "Cole o texto do arquivo, com BEGIN PRIVATE KEY e END PRIVATE KEY. Não transforme em outro base64 e não cole um JWT.",
+    ],
+    example: "Team ID: AB12CD34EF\nKey ID: FG56HI78JK\nServices ID: com.exemplo.rastreio\n-----BEGIN PRIVATE KEY-----\nMIGHExemploNaoEUmaChave\n-----END PRIVATE KEY-----",
+  },
+};
+
+export function loginGuide(provider: string): LoginGuide | undefined {
+  if (!isLoginProvider(provider)) {
+    return undefined;
+  }
+  return loginGuides[provider];
+}
+
+export function loginCallbackPath(provider: string): string | undefined {
+  if (!isLoginProvider(provider)) {
+    return undefined;
+  }
+  return `/v1/login/${provider}/callback`;
+}
+
+export function parsePublicLogins(value: unknown): string[] {
+  if (!isRecord(value) || !Array.isArray(value.data)) {
+    return [];
+  }
+  const names: string[] = [];
+  for (const item of value.data) {
+    if (!isRecord(item)) {
+      continue;
+    }
+    const provider = item.provider;
+    if (typeof provider === "string" && isLoginProvider(provider)) {
+      names.push(provider);
+    }
+  }
+  return names;
+}
+
+export function parseSession(value: unknown): string | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const provider = value.provider;
+  if (typeof provider !== "string" || !isLoginProvider(provider)) {
+    return undefined;
+  }
+  return provider;
+}
+
+export function loginLabel(provider: string): string {
+  if (provider === "github") {
+    return "GitHub";
+  }
+  if (provider === "gitea") {
+    return "Gitea";
+  }
+  if (provider === "google") {
+    return "Google";
+  }
+  if (provider === "apple") {
+    return "Apple";
+  }
+  return "Login";
+}
+
+export function parseSecretBackend(value: unknown): Parsed<SecretBackendView> {
+  if (!isRecord(value)) {
+    return fail("O cofre veio ilegível.");
+  }
+  const kind = readString(value, "kind");
+  const ready = readBool(value, "ready");
+  if (kind === undefined || kind === "" || ready === undefined) {
+    return fail("O cofre veio ilegível.");
+  }
+  return { ok: true, value: { kind, ready } };
+}
+
+export function parseLoginCatalog(value: unknown): Parsed<LoginProviderView[]> {
+  if (!isRecord(value) || !Array.isArray(value.data)) {
+    return fail("A lista de logins veio ilegível.");
+  }
+  const byName = new Map<LoginProviderName, LoginProviderView>();
+  for (const item of value.data) {
+    const parsed = parseLoginProvider(item);
+    if (!parsed.ok) {
+      return fail("A lista de logins veio incompleta.");
+    }
+    byName.set(parsed.value.provider, parsed.value);
+  }
+  const items: LoginProviderView[] = [];
+  for (const name of loginProviders) {
+    const item = byName.get(name);
+    if (item === undefined) {
+      return fail("A lista de logins veio incompleta.");
+    }
+    items.push(item);
+  }
+  return { ok: true, value: items };
+}
+
+export function parseLoginProvider(value: unknown): Parsed<LoginProviderView> {
+  if (!isRecord(value)) {
+    return fail("O login veio ilegível.");
+  }
+  const provider = readString(value, "provider");
+  const enabled = readBool(value, "enabled");
+  const configured = readBool(value, "configured");
+  const secretPresent = readBool(value, "secret_present");
+  if (
+    !isLoginProvider(provider) ||
+    enabled === undefined ||
+    configured === undefined ||
+    secretPresent === undefined
+  ) {
+    return fail("O login veio ilegível.");
+  }
+  const view: LoginProviderView = { provider, enabled, configured, secretPresent };
+  const clientId = readString(value, "client_id");
+  const issuerUrl = readString(value, "issuer_url");
+  const teamId = readString(value, "team_id");
+  const keyId = readString(value, "key_id");
+  const servicesId = readString(value, "services_id");
+  const updatedAt = readString(value, "updated_at");
+  if (clientId !== undefined && clientId !== "") {
+    view.clientId = clientId;
+  }
+  if (issuerUrl !== undefined && issuerUrl !== "") {
+    view.issuerUrl = issuerUrl;
+  }
+  if (teamId !== undefined && teamId !== "") {
+    view.teamId = teamId;
+  }
+  if (keyId !== undefined && keyId !== "") {
+    view.keyId = keyId;
+  }
+  if (servicesId !== undefined && servicesId !== "") {
+    view.servicesId = servicesId;
+  }
+  if (updatedAt !== undefined && updatedAt !== "") {
+    view.updatedAt = updatedAt;
+  }
+  return { ok: true, value: view };
+}
+
+function isLoginProvider(value: string | undefined): value is LoginProviderName {
+  return value === "github" || value === "gitea" || value === "google" || value === "apple";
 }
 
 export function formatInstant(iso: string): string {
@@ -568,6 +821,14 @@ function parseProjection(value: unknown): ProjectionView | undefined {
 function readString(record: Record<string, unknown>, key: string): string | undefined {
   const value = record[key];
   if (typeof value !== "string") {
+    return undefined;
+  }
+  return value;
+}
+
+function readBool(record: Record<string, unknown>, key: string): boolean | undefined {
+  const value = record[key];
+  if (typeof value !== "boolean") {
     return undefined;
   }
   return value;

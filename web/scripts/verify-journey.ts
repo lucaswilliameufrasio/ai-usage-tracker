@@ -82,7 +82,7 @@ async function exercise(origin: string, work: string, agentBin: string): Promise
   click(root, "[data-action='create-setup']");
   await waitFor(root, (text) => text.includes("Sem dados") && text.includes("Claude") && text.includes("Codex"), "visão vazia");
   click(root, "[data-action='close-overlay']");
-  await openHash(view, root, "#/dispositivos", "devices");
+  await openScreen(view, root, "/dispositivos", "devices");
   click(root, "[data-action='enroll']");
   await waitFor(root, () => root.querySelector("[data-enrollment-code]") !== null, "código de enrolamento");
   const codeNode = root.querySelector("[data-enrollment-code]");
@@ -108,7 +108,7 @@ async function exercise(origin: string, work: string, agentBin: string): Promise
     "--codex-dir", path.join(repoRoot, "fixtures/synthetic/codex"),
   ], 0);
   click(root, "[data-action='close-overlay']");
-  await openHash(view, root, "#/", "overview");
+  await openScreen(view, root, "/", "overview");
   await waitFor(root, (text) => text.includes("86%") && text.includes("25%"), "percentuais na visão");
   const operator = view.localStorage.getItem("tracker.operator_token") ?? "";
   if (operator === "") {
@@ -143,11 +143,11 @@ async function exercise(origin: string, work: string, agentBin: string): Promise
       throw new Error("canário no histórico da API");
     }
   }
-  await openHash(view, root, "#/historico", "history");
+  await openScreen(view, root, "/historico", "history");
   await waitFor(root, (text) => text.includes("86%"), "histórico");
-  await openHash(view, root, "#/alertas", "alerts");
+  await openScreen(view, root, "/alertas", "alerts");
   await waitFor(root, (text) => text.includes("Sem inscrição de push"), "estado do push");
-  await openHash(view, root, "#/dispositivos", "devices");
+  await openScreen(view, root, "/dispositivos", "devices");
   await waitFor(root, (text) => text.includes("notebook"), "dispositivo");
   click(root, "[data-action='revoke']");
   click(root, "[data-action='confirm-revoke']");
@@ -169,7 +169,7 @@ async function exercise(origin: string, work: string, agentBin: string): Promise
     throw new Error("sem rede");
   };
   try {
-    await openHash(view, root, "#/", "overview");
+    await openScreen(view, root, "/", "overview");
     await waitFor(root, (text) => text.includes("não são a leitura atual"), "cópia offline");
     const headlines = root.querySelectorAll("[data-headline]");
     if (headlines.length !== 2) {
@@ -201,14 +201,14 @@ async function shootGate(origin: string): Promise<void> {
   }
 }
 
-async function openHash(view: Window, root: HTMLElement, hash: string, route: string): Promise<void> {
-  const anchor = root.querySelector(`a[href='${hash}']`);
+async function openScreen(view: Window, root: HTMLElement, path: string, route: string): Promise<void> {
+  const anchor = root.querySelector(`a[href='${path}']`);
   if (anchor !== null && "click" in anchor) {
     anchor.click();
   }
   if (root.querySelector("main")?.getAttribute("data-route") !== route) {
-    view.location.hash = hash;
-    view.dispatchEvent(new view.Event("hashchange"));
+    view.history.pushState({}, "", path);
+    view.dispatchEvent(new view.PopStateEvent("popstate"));
   }
   await waitFor(root, () => root.querySelector("main")?.getAttribute("data-route") === route, route);
 }

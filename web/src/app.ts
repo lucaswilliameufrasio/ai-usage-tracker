@@ -3,15 +3,24 @@ import {
   deliveryLabel,
   formatInstant,
   formatUsed,
+  loginCallbackPath,
+  loginGuide,
+  loginLabel,
   operatorTokenKey,
   overviewCacheKey,
   parseCachedOverview,
   parseDeliveries,
   parseDevices,
   parseHistory,
+  parseLoginCatalog,
+  parseLoginProvider,
+  parsePublicLogins,
+  parseSecretBackend,
+  parseSession,
   isRecord,
   parseOverview,
   parseRoute,
+  screenPath,
   parseSettings,
   parseSubscriptions,
   primaryWindow,
@@ -25,14 +34,19 @@ import {
   type DeliveryView,
   type DeviceView,
   type HistorySample,
+  type LoginProviderView,
   type Overview,
   type ProviderCard,
   type RouteName,
+  type SecretBackendView,
   type SettingsView,
   type SubscriptionView,
 } from "./view.ts";
 
-type ScreenState = { type: "signed-out" } | { type: "ready" };
+type ScreenState =
+  | { type: "signed-out" }
+  | { type: "ready"; role: "operator" }
+  | { type: "ready"; role: "person"; provider: string };
 
 type OverlayState =
   | { type: "none" }
@@ -51,11 +65,18 @@ type PageState =
       deliveries: DeliveryView[];
       push: "loading" | "ready" | "unconfigured";
       problem: string;
+    }
+  | {
+      route: "access";
+      backend?: SecretBackendView;
+      providers: LoginProviderView[];
+      problem: string;
     };
 
 type AppState = {
   token: string;
   screen: ScreenState;
+  loginChoices: string[];
   overlay: OverlayState;
   page: PageState;
   notice: string;
@@ -70,28 +91,56 @@ export function start(root: HTMLElement): void {
   const state: AppState = {
     token: view.localStorage.getItem(operatorTokenKey) ?? "",
     screen: { type: "signed-out" },
+    loginChoices: [],
     overlay: { type: "none" },
     page: { route: "overview", fromCache: false, problem: "" },
     notice: "",
     loadId: 0,
   };
-  if (state.token !== "") {
-    state.screen = { type: "ready" };
+  if (new URLSearchParams(view.location.search).get("login") === "falha") {
+    state.notice = "O login não foi concluído.";
   }
   const paint = () => {
     render(root, view, state);
   };
-  view.addEventListener("hashchange", () => {
+  view.addEventListener("popstate", () => {
     if (state.screen.type !== "ready") {
       return;
     }
-    void loadRoute(view, state, parseRoute(view.location.hash), paint);
+    void loadRoute(view, state, currentRoute(view), paint);
   });
-  paint();
-  if (state.screen.type === "ready") {
-    void loadRoute(view, state, parseRoute(view.location.hash), paint);
+  canonicalize(view);
+  if (state.token !== "") {
+    state.screen = { type: "ready", role: "operator" };
+    paint();
+    void loadRoute(view, state, currentRoute(view), paint);
+    registerWorker(view);
+    return;
   }
+  paint();
+  void enterAsPerson(view, state, paint);
   registerWorker(view);
+}
+
+async function enterAsPerson(view: Window, state: AppState, paint: () => void): Promise<void> {
+  const session = await apiRequest(view.location.origin, "/v1/session", "", "GET");
+  if (session.ok) {
+    const provider = parseSession(session.body);
+    if (provider !== undefined) {
+      state.screen = { type: "ready", role: "person", provider };
+      if (state.notice === "O login não foi concluído.") {
+        state.notice = "";
+      }
+      paint();
+      void loadRoute(view, state, currentRoute(view), paint);
+      return;
+    }
+  }
+  const listed = await apiRequest(view.location.origin, "/v1/login/providers", "", "GET");
+  if (listed.ok) {
+    state.loginChoices = parsePublicLogins(listed.body);
+  }
+  paint();
 }
 
 function render(root: HTMLElement, view: Window, state: AppState): void {
@@ -116,8 +165,16 @@ function render(root: HTMLElement, view: Window, state: AppState): void {
     main.append(historyView(doc, view, state, () => render(root, view, state)));
   } else if (state.page.route === "devices") {
     main.append(devicesView(doc, view, state, () => render(root, view, state)));
+  } else if (state.page.route === "alerts") {
+    if (personView(state)) {
+      main.append(adminArea(doc));
+    } else {
+      main.append(alertsView(doc, view, state, () => render(root, view, state)));
+    }
+  } else if (personView(state)) {
+    main.append(adminArea(doc));
   } else {
-    main.append(alertsView(doc, view, state, () => render(root, view, state)));
+    main.append(accessView(doc, view, state, () => render(root, view, state)));
   }
   shell.append(main);
   const overlay = overlayView(doc, view, state, () => render(root, view, state));
@@ -137,7 +194,19 @@ function signedOut(doc: Document, view: Window, state: AppState, paint: () => vo
   section.className = "gate";
   section.append(el(doc, "p", "mark", "Rastreador"));
   section.append(el(doc, "h1", "gate-title", "Uso local, leitura no navegador"));
-  section.append(el(doc, "p", "lede", "O agente fica na sua máquina. Este navegador só guarda o token do operador e percentuais já coletados."));
+  section.append(el(doc, "p", "lede", "O agente fica na sua máquina. O administrador cola o token do operador. As outras pessoas entram pelo provedor que ele configurou."));
+  if (state.loginChoices.length > 0) {
+    const choices = doc.createElement("div");
+    choices.className = "choices";
+    for (const provider of state.loginChoices) {
+      const anchor = doc.createElement("a");
+      anchor.className = "enter";
+      anchor.href = `/v1/login/${provider}/start`;
+      anchor.textContent = `Entrar com ${loginLabel(provider)}`;
+      choices.append(anchor);
+    }
+    section.append(choices);
+  }
   if (state.notice !== "") {
     section.append(note(doc, state.notice, "notice"));
   }
@@ -163,11 +232,11 @@ function signedOut(doc: Document, view: Window, state: AppState, paint: () => vo
     }
     state.token = token;
     view.localStorage.setItem(operatorTokenKey, token);
-    state.screen = { type: "ready" };
+    state.screen = { type: "ready", role: "operator" };
     state.notice = "";
     state.overlay = { type: "none" };
     paint();
-    void loadRoute(view, state, parseRoute(view.location.hash), paint);
+    void loadRoute(view, state, currentRoute(view), paint);
   });
   const create = button(doc, "Criar esta instalação", "");
   create.type = "button";
@@ -182,30 +251,99 @@ function signedOut(doc: Document, view: Window, state: AppState, paint: () => vo
 function topbar(doc: Document, view: Window, state: AppState, paint: () => void): HTMLElement {
   const header = doc.createElement("header");
   header.className = "topbar";
-  const brand = el(doc, "a", "mark", "Rastreador");
-  brand.setAttribute("href", "#/");
+  const brand = screenLink(doc, view, state, paint, "overview", "Rastreador");
+  brand.className = "mark";
+  brand.removeAttribute("aria-current");
   const nav = doc.createElement("nav");
-  nav.append(
-    link(doc, "#/", "Visão", state.page.route === "overview"),
-    link(doc, "#/historico", "Histórico", state.page.route === "history"),
-    link(doc, "#/dispositivos", "Dispositivos", state.page.route === "devices"),
-    link(doc, "#/alertas", "Alertas", state.page.route === "alerts"),
-  );
+  const pages: Array<[RouteName, string]> = [
+    ["overview", "Visão"],
+    ["history", "Histórico"],
+    ["devices", "Dispositivos"],
+  ];
+  if (!personView(state)) {
+    pages.push(["alerts", "Alertas"]);
+    pages.push(["access", "Acesso"]);
+  }
+  for (const [route, label] of pages) {
+    nav.append(screenLink(doc, view, state, paint, route, label));
+  }
   const exit = button(doc, "Sair deste navegador", "quiet");
   exit.dataset.action = "sign-out";
   exit.addEventListener("click", () => {
-    state.loadId += 1;
-    state.token = "";
-    state.screen = { type: "signed-out" };
-    state.overlay = { type: "none" };
-    state.notice = "";
-    state.page = { route: "overview", fromCache: false, problem: "" };
-    view.localStorage.removeItem(operatorTokenKey);
-    view.localStorage.removeItem(overviewCacheKey);
-    paint();
+    void signOut(view, state, paint);
   });
   header.append(brand, nav, exit);
   return header;
+}
+
+async function signOut(view: Window, state: AppState, paint: () => void): Promise<void> {
+  if (personView(state)) {
+    const result = await apiRequest(view.location.origin, "/v1/session/logout", "", "POST");
+    if (!result.ok && result.errorCode === "NETWORK") {
+      state.notice = "Sem rede para encerrar a sessão.";
+      paint();
+      return;
+    }
+  }
+  state.loadId += 1;
+  state.token = "";
+  state.screen = { type: "signed-out" };
+  state.loginChoices = [];
+  state.overlay = { type: "none" };
+  state.notice = "";
+  state.page = { route: "overview", fromCache: false, problem: "" };
+  view.localStorage.removeItem(operatorTokenKey);
+  view.localStorage.removeItem(overviewCacheKey);
+  paint();
+  void enterAsPerson(view, state, paint);
+}
+
+function personView(state: AppState): boolean {
+  return state.screen.type === "ready" && state.screen.role === "person";
+}
+
+function adminArea(doc: Document): HTMLElement {
+  const wrap = doc.createElement("section");
+  wrap.append(el(doc, "h1", "", "Área do administrador"));
+  wrap.append(el(doc, "p", "lede", "Esta área fica com quem administra a instalação."));
+  return wrap;
+}
+
+function overviewRequest(state: AppState): string {
+  if (personView(state)) {
+    return "/v1/account/overview";
+  }
+  return "/v1/overview";
+}
+
+function samplesRequest(state: AppState, cursor: string): string {
+  const base = personView(state) ? "/v1/account/samples" : "/v1/samples";
+  if (cursor === "") {
+    return `${base}?limit=20`;
+  }
+  return `${base}?limit=20&cursor=${encodeURIComponent(cursor)}`;
+}
+
+function devicesRequest(state: AppState): string {
+  if (personView(state)) {
+    return "/v1/account/devices";
+  }
+  return "/v1/devices";
+}
+
+function enrollmentRequest(state: AppState): string {
+  if (personView(state)) {
+    return "/v1/account/enrollment-codes";
+  }
+  return "/v1/enrollment-codes";
+}
+
+function revokeRequest(state: AppState, id: string): string {
+  const encoded = encodeURIComponent(id);
+  if (personView(state)) {
+    return `/v1/account/devices/${encoded}/revoke`;
+  }
+  return `/v1/devices/${encoded}/revoke`;
 }
 
 function overviewView(doc: Document, view: Window, state: AppState, paint: () => void): HTMLElement {
@@ -464,6 +602,342 @@ function settingsForm(doc: Document, view: Window, state: AppState, settings: Se
   return form;
 }
 
+function accessView(doc: Document, view: Window, state: AppState, paint: () => void): HTMLElement {
+  const page = state.page.route === "access" ? state.page : { route: "access" as const, providers: [], problem: "" };
+  const wrap = doc.createElement("section");
+  wrap.append(el(doc, "h1", "", "Acesso"));
+  wrap.append(el(doc, "p", "lede", "O administrador configura o login. O segredo entra no cofre e não volta para esta tela."));
+  wrap.append(el(doc, "p", "", "Quem entra por um provedor configurado vê o próprio uso. Esta tela continua só com o administrador."));
+  if (page.backend !== undefined) {
+    wrap.append(el(doc, "p", "", backendCopy(page.backend)));
+  }
+  if (page.problem !== "") {
+    wrap.append(note(doc, page.problem, "problem"));
+  }
+  for (const item of page.providers) {
+    wrap.append(loginForm(doc, view, state, item, paint));
+  }
+  return wrap;
+}
+
+function loginForm(
+  doc: Document,
+  view: Window,
+  state: AppState,
+  item: LoginProviderView,
+  paint: () => void,
+): HTMLFormElement {
+  const form = doc.createElement("form");
+  form.className = "stack access-form";
+  form.dataset.provider = item.provider;
+  form.append(el(doc, "h2", "", loginLabel(item.provider)));
+  const kept = item.secretPresent ? "Segredo guardado." : "Nenhum segredo guardado.";
+  const complete = item.configured ? "Configuração completa." : "Configuração incompleta.";
+  form.append(el(doc, "p", "meta", `${kept} ${complete}`));
+  const guide = loginGuide(item.provider);
+  if (guide !== undefined) {
+    form.append(loginGuideView(doc, view, item.provider, guide.steps, guide.example));
+  }
+  const enabledLabel = el(doc, "label", "check", "Login ativo");
+  const enabled = doc.createElement("input");
+  enabled.type = "checkbox";
+  enabled.name = "enabled";
+  enabled.checked = item.enabled;
+  enabledLabel.prepend(enabled);
+  form.append(enabledLabel);
+  form.append(field(doc, "Client id", "text", "client_id", item.clientId ?? ""));
+  if (item.provider === "gitea") {
+    form.append(field(doc, "URL base", "url", "issuer_url", item.issuerUrl ?? ""));
+  }
+  if (item.provider === "apple") {
+    form.append(field(doc, "Team ID", "text", "team_id", item.teamId ?? ""));
+    form.append(field(doc, "Key ID", "text", "key_id", item.keyId ?? ""));
+    form.append(field(doc, "Services ID", "text", "services_id", item.servicesId ?? ""));
+  }
+  form.append(item.provider === "apple" ? appleSecretField(doc) : secretField(doc));
+  const save = button(doc, "Guardar", "primary");
+  save.type = "submit";
+  form.append(save);
+  if (item.configured || item.secretPresent || item.clientId !== undefined) {
+    const remove = button(doc, "Remover este login", "quiet");
+    remove.dataset.action = "remove-login";
+    remove.dataset.provider = item.provider;
+    remove.addEventListener("click", () => {
+      void removeLogin(view, state, item.provider, paint);
+    });
+    form.append(remove);
+  }
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void saveLogin(view, state, item.provider, form, paint);
+  });
+  return form;
+}
+
+function loginGuideView(doc: Document, view: Window, provider: string, steps: string[], example: string): HTMLElement {
+  const block = doc.createElement("div");
+  block.className = "guide";
+  block.append(el(doc, "h3", "", "Onde obter"));
+  const list = doc.createElement("ol");
+  for (const step of steps) {
+    const item = doc.createElement("li");
+    item.textContent = step;
+    list.append(item);
+  }
+  block.append(list);
+  const callback = loginCallbackPath(provider);
+  if (callback !== undefined) {
+    block.append(el(doc, "p", "", "Cadastre esta URL de retorno no aplicativo."));
+    block.append(el(doc, "p", "meta", "URL de retorno"));
+    block.append(el(doc, "p", "callback", `${view.location.origin}${callback}`));
+  }
+  block.append(el(doc, "p", "meta", "Exemplo fictício"));
+  const sample = el(doc, "pre", "example", example);
+  block.append(sample);
+  return block;
+}
+
+function secretField(doc: Document): HTMLLabelElement {
+  const label = doc.createElement("label");
+  label.textContent = "Segredo";
+  const input = doc.createElement("input");
+  input.type = "password";
+  input.name = "secret";
+  input.autocomplete = "off";
+  input.spellcheck = false;
+  input.placeholder = "Deixe vazio para manter o segredo guardado.";
+  input.value = "";
+  input.dataset.secret = "login";
+  label.append(input);
+  return label;
+}
+
+function appleSecretField(doc: Document): HTMLLabelElement {
+  const label = doc.createElement("label");
+  label.textContent = "Chave .p8";
+  const input = doc.createElement("textarea");
+  input.name = "secret";
+  input.rows = 8;
+  input.autocomplete = "off";
+  input.spellcheck = false;
+  input.placeholder = "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----";
+  input.value = "";
+  input.dataset.secret = "login";
+  label.append(input);
+  return label;
+}
+
+function backendCopy(backend: SecretBackendView): string {
+  if (backend.kind === "own" && backend.ready) {
+    return "Cofre próprio aberto.";
+  }
+  if (backend.kind === "own") {
+    return "O cofre próprio não está aberto.";
+  }
+  return "Este backend de cofre ainda não está disponível nesta versão.";
+}
+
+async function loadAccess(view: Window, state: AppState, paint: () => void): Promise<void> {
+  const loadId = begin(state);
+  state.page = { route: "access", providers: [], problem: "" };
+  paint();
+  const backendResult = await apiRequest(view.location.origin, "/v1/admin/secret-backend", state.token, "GET");
+  if (loadId !== state.loadId) {
+    return;
+  }
+  if (!backendResult.ok) {
+    if (backendResult.status === 401) {
+      loseSession(view, state, backendResult.message, paint);
+      return;
+    }
+    state.page = { route: "access", providers: [], problem: backendResult.message };
+    paint();
+    return;
+  }
+  const backend = parseSecretBackend(backendResult.body);
+  if (!backend.ok) {
+    state.page = { route: "access", providers: [], problem: backend.message };
+    paint();
+    return;
+  }
+  const providersResult = await apiRequest(view.location.origin, "/v1/admin/login-providers", state.token, "GET");
+  if (loadId !== state.loadId) {
+    return;
+  }
+  if (!providersResult.ok) {
+    if (providersResult.status === 401) {
+      loseSession(view, state, providersResult.message, paint);
+      return;
+    }
+    state.page = accessState(backend.value, [], providersResult.message);
+    paint();
+    return;
+  }
+  const providers = parseLoginCatalog(providersResult.body);
+  if (!providers.ok) {
+    state.page = accessState(backend.value, [], providers.message);
+    paint();
+    return;
+  }
+  state.page = accessState(backend.value, providers.value, "");
+  paint();
+}
+
+async function saveLogin(
+  view: Window,
+  state: AppState,
+  provider: string,
+  form: HTMLFormElement,
+  paint: () => void,
+): Promise<void> {
+  const loadId = begin(state);
+  const current = currentAccess(state);
+  const data = readForm(form);
+  const enabledInput = inputNamed(form, "enabled");
+  const body: Record<string, unknown> = {
+    enabled: enabledInput !== undefined && enabledInput.checked,
+  };
+  assignText(body, "client_id", formText(data, "client_id"));
+  assignText(body, "issuer_url", formText(data, "issuer_url"));
+  assignText(body, "team_id", formText(data, "team_id"));
+  assignText(body, "key_id", formText(data, "key_id"));
+  assignText(body, "services_id", formText(data, "services_id"));
+  const secret = secretValue(form);
+  if (secret !== "") {
+    body.secret = secret;
+  }
+  const result = await apiRequest(view.location.origin, `/v1/admin/login-providers/${provider}`, state.token, "PUT", body);
+  if (loadId !== state.loadId) {
+    return;
+  }
+  if (!result.ok) {
+    if (result.status === 401) {
+      loseSession(view, state, result.message, paint);
+      return;
+    }
+    state.page = accessState(current.backend, current.providers, result.message);
+    paint();
+    return;
+  }
+  const parsed = parseLoginProvider(result.body);
+  if (!parsed.ok) {
+    state.page = accessState(current.backend, current.providers, parsed.message);
+    paint();
+    return;
+  }
+  state.notice = "Login guardado. O segredo não volta para esta tela.";
+  state.page = accessState(current.backend, replaceProvider(current.providers, parsed.value), "");
+  paint();
+}
+
+async function removeLogin(view: Window, state: AppState, provider: string, paint: () => void): Promise<void> {
+  const loadId = begin(state);
+  const current = currentAccess(state);
+  const result = await apiRequest(view.location.origin, `/v1/admin/login-providers/${provider}`, state.token, "DELETE");
+  if (loadId !== state.loadId) {
+    return;
+  }
+  if (!result.ok) {
+    if (result.status === 401) {
+      loseSession(view, state, result.message, paint);
+      return;
+    }
+    state.page = accessState(current.backend, current.providers, result.message);
+    paint();
+    return;
+  }
+  const parsed = parseLoginProvider(result.body);
+  if (!parsed.ok) {
+    state.page = accessState(current.backend, current.providers, parsed.message);
+    paint();
+    return;
+  }
+  state.notice = "Login removido.";
+  state.page = accessState(current.backend, replaceProvider(current.providers, parsed.value), "");
+  paint();
+}
+
+function accessState(
+  backend: SecretBackendView | undefined,
+  providers: LoginProviderView[],
+  problem: string,
+): Extract<PageState, { route: "access" }> {
+  if (backend === undefined) {
+    return { route: "access", providers, problem };
+  }
+  return { route: "access", backend, providers, problem };
+}
+
+function currentAccess(state: AppState): { backend?: SecretBackendView; providers: LoginProviderView[] } {
+  if (state.page.route !== "access") {
+    return { providers: [] };
+  }
+  if (state.page.backend === undefined) {
+    return { providers: state.page.providers };
+  }
+  return { backend: state.page.backend, providers: state.page.providers };
+}
+
+function replaceProvider(providers: LoginProviderView[], next: LoginProviderView): LoginProviderView[] {
+  const out: LoginProviderView[] = [];
+  let found = false;
+  for (const item of providers) {
+    if (item.provider === next.provider) {
+      out.push(next);
+      found = true;
+    } else {
+      out.push(item);
+    }
+  }
+  if (!found) {
+    out.push(next);
+  }
+  return out;
+}
+
+function secretValue(form: HTMLFormElement): string {
+  const realm = form.ownerDocument.defaultView;
+  const node = form.elements.namedItem("secret");
+  if (realm === null) {
+    return "";
+  }
+  if (node instanceof realm.HTMLInputElement || node instanceof realm.HTMLTextAreaElement) {
+    return node.value;
+  }
+  return "";
+}
+
+function inputNamed(form: HTMLFormElement, name: string): HTMLInputElement | undefined {
+  const realm = form.ownerDocument.defaultView;
+  const node = form.elements.namedItem(name);
+  if (realm === null || !(node instanceof realm.HTMLInputElement)) {
+    return undefined;
+  }
+  return node;
+}
+
+function readForm(form: HTMLFormElement): FormData {
+  const realm = form.ownerDocument.defaultView;
+  if (realm === null) {
+    throw new Error("janela ausente");
+  }
+  return new realm.FormData(form);
+}
+
+function formText(data: FormData, key: string): string {
+  const value = data.get(key);
+  if (typeof value !== "string") {
+    return "";
+  }
+  return value.trim();
+}
+
+function assignText(body: Record<string, unknown>, key: string, value: string): void {
+  if (value !== "") {
+    body[key] = value;
+  }
+}
+
 function overlayView(doc: Document, view: Window, state: AppState, paint: () => void): HTMLElement | undefined {
   if (state.overlay.type === "none") {
     return undefined;
@@ -532,11 +1006,53 @@ async function createSetup(view: Window, state: AppState, paint: () => void): Pr
   }
   state.token = token;
   view.localStorage.setItem(operatorTokenKey, token);
-  state.screen = { type: "ready" };
+  state.screen = { type: "ready", role: "operator" };
   state.notice = "";
   state.overlay = { type: "operator-token", token };
   paint();
-  void loadRoute(view, state, parseRoute(view.location.hash), paint);
+  void loadRoute(view, state, currentRoute(view), paint);
+}
+
+function currentRoute(view: Window): RouteName {
+  return parseRoute(view.location.pathname, view.location.hash);
+}
+
+function canonicalize(view: Window): void {
+  const path = screenPath(currentRoute(view));
+  if (view.location.pathname === path && view.location.hash === "") {
+    return;
+  }
+  view.history.replaceState({}, "", `${path}${view.location.search}`);
+}
+
+function visit(view: Window, state: AppState, path: string, paint: () => void): void {
+  const here = view.location.pathname === path && view.location.hash === "" && view.location.search === "";
+  if (!here) {
+    view.history.pushState({}, "", path);
+  }
+  if (state.screen.type !== "ready") {
+    return;
+  }
+  void loadRoute(view, state, currentRoute(view), paint);
+}
+
+function screenLink(
+  doc: Document,
+  view: Window,
+  state: AppState,
+  paint: () => void,
+  route: RouteName,
+  text: string,
+): HTMLAnchorElement {
+  const node = link(doc, screenPath(route), text, state.page.route === route);
+  node.addEventListener("click", (event) => {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+      return;
+    }
+    event.preventDefault();
+    visit(view, state, screenPath(route), paint);
+  });
+  return node;
 }
 
 async function loadRoute(view: Window, state: AppState, route: RouteName, paint: () => void): Promise<void> {
@@ -554,14 +1070,27 @@ async function loadRoute(view: Window, state: AppState, route: RouteName, paint:
     await loadDevices(view, state, paint);
     return;
   }
-  await loadAlerts(view, state, paint);
+  if (personView(state) && (route === "alerts" || route === "access")) {
+    if (route === "alerts") {
+      state.page = { route: "alerts", subscriptions: [], deliveries: [], push: "unconfigured", problem: "" };
+    } else {
+      state.page = { route: "access", providers: [], problem: "" };
+    }
+    paint();
+    return;
+  }
+  if (route === "alerts") {
+    await loadAlerts(view, state, paint);
+    return;
+  }
+  await loadAccess(view, state, paint);
 }
 
 async function loadOverview(view: Window, state: AppState, paint: () => void): Promise<void> {
   const loadId = begin(state);
   state.page = { route: "overview", fromCache: false, problem: "" };
   paint();
-  const result = await apiRequest(view.location.origin, "/v1/overview", state.token, "GET");
+  const result = await apiRequest(view.location.origin, overviewRequest(state), state.token, "GET");
   if (loadId !== state.loadId) {
     return;
   }
@@ -595,7 +1124,7 @@ async function loadOverview(view: Window, state: AppState, paint: () => void): P
 
 async function loadHistory(view: Window, state: AppState, cursor: string, paint: () => void): Promise<void> {
   const loadId = begin(state);
-  const path = cursor === "" ? "/v1/samples?limit=20" : `/v1/samples?limit=20&cursor=${encodeURIComponent(cursor)}`;
+  const path = samplesRequest(state, cursor);
   const result = await apiRequest(view.location.origin, path, state.token, "GET");
   if (loadId !== state.loadId) {
     return;
@@ -629,7 +1158,7 @@ async function loadHistory(view: Window, state: AppState, cursor: string, paint:
 
 async function loadDevices(view: Window, state: AppState, paint: () => void): Promise<void> {
   const loadId = begin(state);
-  const result = await apiRequest(view.location.origin, "/v1/devices", state.token, "GET");
+  const result = await apiRequest(view.location.origin, devicesRequest(state), state.token, "GET");
   if (loadId !== state.loadId) {
     return;
   }
@@ -698,7 +1227,7 @@ async function loadAlerts(view: Window, state: AppState, paint: () => void): Pro
 }
 
 async function createEnrollment(view: Window, state: AppState, paint: () => void): Promise<void> {
-  const result = await apiRequest(view.location.origin, "/v1/enrollment-codes", state.token, "POST");
+  const result = await apiRequest(view.location.origin, enrollmentRequest(state), state.token, "POST");
   if (!result.ok) {
     if (result.status === 401) {
       loseSession(view, state, result.message, paint);
@@ -724,7 +1253,7 @@ async function createEnrollment(view: Window, state: AppState, paint: () => void
 }
 
 async function confirmRevoke(view: Window, state: AppState, id: string, paint: () => void): Promise<void> {
-  const result = await apiRequest(view.location.origin, `/v1/devices/${encodeURIComponent(id)}/revoke`, state.token, "POST");
+  const result = await apiRequest(view.location.origin, revokeRequest(state, id), state.token, "POST");
   state.overlay = { type: "none" };
   if (!result.ok) {
     if (result.status === 401) {
@@ -944,7 +1473,7 @@ function button(doc: Document, text: string, className: string): HTMLButtonEleme
 
 function link(doc: Document, href: string, text: string, current: boolean): HTMLAnchorElement {
   const node = doc.createElement("a");
-  node.href = href;
+  node.setAttribute("href", href);
   node.textContent = text;
   if (current) {
     node.setAttribute("aria-current", "page");

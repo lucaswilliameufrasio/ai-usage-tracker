@@ -87,11 +87,18 @@ func (w *WebPush) Send(ctx context.Context, sub Subscription, payload []byte) er
 	}
 	defer resp.Body.Close()
 	_, _ = io.Copy(io.Discard, resp.Body)
-	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusGone {
+	return classifyPushStatus(resp.StatusCode)
+}
+
+func classifyPushStatus(code int) error {
+	if code == http.StatusNotFound || code == http.StatusGone {
 		return ErrGone
 	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("status %d", resp.StatusCode)
+	if code == http.StatusTooManyRequests || code >= 500 {
+		return ErrTemporary
+	}
+	if code < 200 || code >= 300 {
+		return fmt.Errorf("%w: status %d", ErrRejected, code)
 	}
 	return nil
 }

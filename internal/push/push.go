@@ -6,7 +6,11 @@ import (
 	"sync"
 )
 
-var ErrGone = errors.New("subscription gone")
+var (
+	ErrGone      = errors.New("subscription gone")
+	ErrTemporary = errors.New("push temporary")
+	ErrRejected  = errors.New("push rejected")
+)
 
 type Subscription struct {
 	Endpoint string
@@ -21,10 +25,12 @@ type Sender interface {
 }
 
 type Recording struct {
-	mu       sync.Mutex
-	payloads [][]byte
-	gone     map[string]bool
-	key      string
+	mu        sync.Mutex
+	payloads  [][]byte
+	gone      map[string]bool
+	key       string
+	temporary int
+	rejected  bool
 }
 
 func NewRecording(publicKey string) *Recording {
@@ -45,6 +51,13 @@ func (r *Recording) Send(_ context.Context, sub Subscription, payload []byte) er
 	if r.gone[sub.Endpoint] {
 		return ErrGone
 	}
+	if r.rejected {
+		return ErrRejected
+	}
+	if r.temporary > 0 {
+		r.temporary--
+		return ErrTemporary
+	}
 	copied := append([]byte(nil), payload...)
 	r.payloads = append(r.payloads, copied)
 	return nil
@@ -62,4 +75,16 @@ func (r *Recording) FailEndpoint(endpoint string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.gone[endpoint] = true
+}
+
+func (r *Recording) FailTemporary(times int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.temporary = times
+}
+
+func (r *Recording) FailRejected() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.rejected = true
 }

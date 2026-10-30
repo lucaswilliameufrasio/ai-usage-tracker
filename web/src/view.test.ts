@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  deliveryDetail,
   deliveryLabel,
   loginCallbackPath,
   loginGuide,
@@ -262,6 +263,14 @@ describe("avisos", () => {
     assert.equal(deliveryLabel("unconfigured"), "Push não configurado");
     assert.equal(deliveryLabel("subscription_expired"), "Inscrição expirada");
     assert.equal(deliveryLabel("no_subscription"), "Sem inscrição de push");
+    assert.equal(deliveryDetail("QUEUE_FULL"), "A fila de avisos está cheia.");
+    assert.equal(deliveryDetail("DELIVERY_EXPIRED"), "O aviso passou do prazo.");
+    assert.equal(deliveryDetail("SEND_FAILED"), "O envio falhou depois das tentativas.");
+    assert.equal(deliveryDetail("PUSH_UNCONFIGURED"), "O push não está configurado.");
+    assert.equal(deliveryDetail("SUBSCRIPTION_EXPIRED"), "A inscrição não aceita mais avisos.");
+    assert.equal(deliveryDetail("QUIET_HOURS"), "O aviso ficou no horário silencioso.");
+    assert.equal(deliveryDetail(""), "");
+    assert.equal(deliveryDetail("outro"), "");
   });
 
   it("muda o tom da régua no limiar", () => {

@@ -1,5 +1,6 @@
 import { apiRequest, type ApiResult } from "./api.ts";
 import {
+  deliveryDetail,
   deliveryLabel,
   formatInstant,
   formatUsed,
@@ -546,7 +547,10 @@ function alertsView(doc: Document, view: Window, state: AppState, paint: () => v
   for (const item of page.subscriptions) {
     const row = doc.createElement("li");
     row.textContent = `${subscriptionLabel(item.status)} · ${item.endpoint} · ${formatInstant(item.createdAt)}`;
-    if (item.lastError !== undefined && item.lastError !== "") {
+    const subscriptionReason = deliveryDetail(item.lastError ?? "");
+    if (subscriptionReason !== "") {
+      row.append(el(doc, "span", "meta", ` ${subscriptionReason}`));
+    } else if (item.lastError !== undefined && item.lastError !== "") {
       row.append(el(doc, "span", "meta", ` ${item.lastError}`));
     }
     const remove = button(doc, "Remover", "quiet");
@@ -568,6 +572,10 @@ function alertsView(doc: Document, view: Window, state: AppState, paint: () => v
     const status = el(doc, "p", "headline", deliveryLabel(item.status));
     status.dataset.deliveryStatus = item.status;
     row.append(status);
+    const reason = deliveryDetail(item.detail ?? "");
+    if (reason !== "") {
+      row.append(el(doc, "p", "meta", reason));
+    }
     row.append(el(doc, "p", "", `${providerLabel(item.provider)} · ${item.title}`));
     row.append(el(doc, "p", "", item.body));
     row.append(el(doc, "p", "meta", formatInstant(item.createdAt)));

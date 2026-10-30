@@ -17,13 +17,14 @@ import (
 )
 
 type Config struct {
-	API        string
-	Token      string
-	SpoolPath  string
-	ClaudeFile string
-	CodexDir   string
-	Now        time.Time
-	Client     *http.Client
+	API          string
+	Token        string
+	SpoolPath    string
+	ClaudeFile   string
+	CodexDir     string
+	CodexCommand string
+	Now          time.Time
+	Client       *http.Client
 }
 
 type Result struct {
@@ -33,6 +34,7 @@ type Result struct {
 	Rejected  int
 	Pending   int
 	Blocked   bool
+	CodexLive string
 }
 
 func Run(ctx context.Context, cfg Config) (Result, error) {
@@ -50,26 +52,38 @@ func Run(ctx context.Context, cfg Config) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
+	codexLive := ""
+	if cfg.CodexDir != "" && cfg.CodexCommand != "" {
+		live, liveErr := collect.ReadCodexLive(ctx, cfg.CodexCommand, cfg.Now)
+		if liveErr == nil && live != nil {
+			batch = collect.PreferCodex(batch, *live)
+			codexLive = "read"
+		} else {
+			codexLive = "fallback"
+		}
+	}
 	var incoming []spool.Item
 	for _, sample := range batch.Samples {
 		body, err := sample.Canonical()
 		if err != nil {
-			return Result{}, err
+			return Result{CodexLive: codexLive}, err
 		}
 		incoming = append(incoming, spool.Item{Kind: spool.KindSample, State: spool.StatePending, Body: body})
 	}
 	for _, report := range batch.Reports {
 		body, err := report.Canonical()
 		if err != nil {
-			return Result{}, err
+			return Result{CodexLive: codexLive}, err
 		}
 		incoming = append(incoming, spool.Item{Kind: spool.KindReport, State: spool.StatePending, Body: body})
 	}
 	items, err := spool.Merge(cfg.SpoolPath, incoming)
 	if err != nil {
-		return Result{}, err
+		return Result{CodexLive: codexLive}, err
 	}
-	return send(ctx, cfg, items)
+	result, err := send(ctx, cfg, items)
+	result.CodexLive = codexLive
+	return result, err
 }
 
 func send(ctx context.Context, cfg Config, items []spool.Item) (Result, error) {

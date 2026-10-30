@@ -15,16 +15,19 @@ go run ./cmd/tracker --addr 127.0.0.1:8787 --data data --web web/dist
 
 Abra `http://127.0.0.1:8787` e crie a instalação. O token do operador aparece uma vez. Fora de loopback, defina `TRACKER_SETUP_TOKEN`; se a variável existir, o setup exige o cabeçalho `X-Setup-Token` também em loopback. As telas ficam em `/`, `/historico`, `/dispositivos`, `/alertas` e `/acesso`. Um endereço antigo com `#/` abre a mesma tela (ADR 0009).
 
-No PWA, gere um código de enrolamento e rode o agente com um arquivo que você escolheu. Sem `--claude-file` ou `--codex-dir`, o agente não lê `~/.claude` nem `~/.codex`.
+No PWA, gere um código de enrolamento. No terminal, `go run ./cmd/agent run` abre o setup na primeira vez: endereço, código, Claude e Codex. Ele propõe `~/.claude.json` e `~/.codex/sessions` e só grava o que você confirmar (ADR 0014). A configuração fica em `~/.config/ai-usage-tracker/agent.json`. O próximo `run` sem flags envia direto. `agent setup` refaz a escolha. Com o Codex configurado, o envio pergunta o limite ao comando local `codex app-server` e só usa a pasta de sessões se essa leitura falhar (ADR 0015). O agente não lê o token do Codex.
+
+Os flags continuam o caminho de script. Nesse modo o agente não procura o diretório pessoal.
 
 ```sh
+go run ./cmd/agent run
 go run ./cmd/agent enroll --api http://127.0.0.1:8787 --code CODIGO --name notebook --out device.token
 go run ./cmd/agent run --api http://127.0.0.1:8787 --token-file device.token --spool spool.json --claude-file CAMINHO --codex-dir DIRETORIO
 ```
 
 `data/`, `device.token`, `spool.json` e a chave VAPID ficam fora do Git. Não commite credenciais nem capturas pessoais.
 
-O backup do SQLite é um snapshot consistente. Ele não inclui o cofre nem a chave. A restauração só grava num diretório que ainda não tem `tracker.db` (ADR 0010). A tela não baixa o banco. A recuperação do produto é o sqlite-replication, primeiro num banco temporário em WAL, sem abrir o `data/` em uso (ADR 0011).
+O backup do SQLite é um snapshot consistente. Ele não inclui o cofre nem a chave. A restauração só grava num diretório que ainda não tem `tracker.db` (ADR 0010). A tela não baixa o banco. A recuperação do produto é o sqlite-replication (ADR 0011). O processo abre o banco em WAL. O ensaio do replicador fica no teste e usa o módulo local `../sqlite-replication/go`; ele não abre o `data/` em uso. O aviso de push entra numa fila de até 32 pendentes, com nova tentativa e prazo de 24 horas (ADR 0013). O banco aberto por este código fica na user_version 4.
 
 ```sh
 go run ./cmd/tracker backup --data data --out snapshot.db

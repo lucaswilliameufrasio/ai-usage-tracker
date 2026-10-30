@@ -28,6 +28,10 @@ var (
 
 const observationCap = 240
 
+const schemaVersion = 4
+
+const deliveryColumns = `id, idempotency_key, subscription_id, kind, provider, title, body, status, detail, attempts, next_attempt_at, created_at, updated_at`
+
 type Device struct {
 	ID        string
 	Name      string
@@ -64,6 +68,8 @@ type Delivery struct {
 	Body           string
 	Status         string
 	Detail         string
+	Attempts       int
+	NextAttempt    time.Time
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 }
@@ -91,6 +97,10 @@ func Open(path string) (*Store, error) {
 	}
 	db.SetMaxOpenConns(1)
 	store := &Store{db: db}
+	if err := store.useWAL(); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
 	if err := store.migrate(); err != nil {
 		_ = db.Close()
 		return nil, err
@@ -102,12 +112,23 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
+func (s *Store) useWAL() error {
+	var mode string
+	if err := s.db.QueryRow(`PRAGMA journal_mode=WAL`).Scan(&mode); err != nil {
+		return fmt.Errorf("abrir sqlite em wal: %w", err)
+	}
+	if !strings.EqualFold(mode, "wal") {
+		return fmt.Errorf("abrir sqlite em wal: modo %s", mode)
+	}
+	return nil
+}
+
 func (s *Store) migrate() error {
 	var version int
 	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
 		return fmt.Errorf("ler versão: %w", err)
 	}
-	if version > 3 {
+	if version > schemaVersion {
 		return fmt.Errorf("sqlite user_version %d não é suportada", version)
 	}
 	if version < 1 {
@@ -124,6 +145,12 @@ func (s *Store) migrate() error {
 	}
 	if version < 3 {
 		if err := s.migrateV3(); err != nil {
+			return err
+		}
+		version = 3
+	}
+	if version < 4 {
+		if err := s.migrateV4(); err != nil {
 			return err
 		}
 	}
@@ -276,6 +303,19 @@ ALTER TABLE devices ADD COLUMN account_id TEXT NOT NULL DEFAULT '';
 		return fmt.Errorf("migrar contas: %w", err)
 	}
 	if _, err := s.db.Exec(`PRAGMA user_version = 3`); err != nil {
+		return fmt.Errorf("gravar versão: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) migrateV4() error {
+	if _, err := s.db.Exec(`ALTER TABLE push_deliveries ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0`); err != nil {
+		return fmt.Errorf("migrar fila: %w", err)
+	}
+	if _, err := s.db.Exec(`ALTER TABLE push_deliveries ADD COLUMN next_attempt_at TEXT NOT NULL DEFAULT ''`); err != nil {
+		return fmt.Errorf("migrar fila: %w", err)
+	}
+	if _, err := s.db.Exec(`PRAGMA user_version = 4`); err != nil {
 		return fmt.Errorf("gravar versão: %w", err)
 	}
 	return nil
@@ -695,11 +735,15 @@ func (s *Store) ExpireSubscription(id string, when time.Time, reason string) err
 }
 
 func (s *Store) InsertDelivery(delivery Delivery) (bool, error) {
+	nextAttempt := ""
+	if !delivery.NextAttempt.IsZero() {
+		nextAttempt = formatTime(delivery.NextAttempt)
+	}
 	result, err := s.db.Exec(
-		`INSERT INTO push_deliveries(id, idempotency_key, subscription_id, kind, provider, title, body, status, detail, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO push_deliveries(id, idempotency_key, subscription_id, kind, provider, title, body, status, detail, attempts, next_attempt_at, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(idempotency_key) DO NOTHING`,
-		delivery.ID, delivery.IdempotencyKey, delivery.SubscriptionID, delivery.Kind, delivery.Provider, delivery.Title, delivery.Body, delivery.Status, delivery.Detail, formatTime(delivery.CreatedAt), formatTime(delivery.UpdatedAt),
+		delivery.ID, delivery.IdempotencyKey, delivery.SubscriptionID, delivery.Kind, delivery.Provider, delivery.Title, delivery.Body, delivery.Status, delivery.Detail, delivery.Attempts, nextAttempt, formatTime(delivery.CreatedAt), formatTime(delivery.UpdatedAt),
 	)
 	if err != nil {
 		return false, err
@@ -709,7 +753,7 @@ func (s *Store) InsertDelivery(delivery Delivery) (bool, error) {
 }
 
 func (s *Store) ListDeliveries(limit int) ([]Delivery, error) {
-	rows, err := s.db.Query(`SELECT id, idempotency_key, subscription_id, kind, provider, title, body, status, detail, created_at, updated_at FROM push_deliveries ORDER BY created_at DESC, id DESC LIMIT ?`, limit)
+	rows, err := s.db.Query(`SELECT `+deliveryColumns+` FROM push_deliveries ORDER BY created_at DESC, id DESC LIMIT ?`, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -726,7 +770,7 @@ func (s *Store) ListDeliveries(limit int) ([]Delivery, error) {
 }
 
 func (s *Store) PendingDeliveries() ([]Delivery, error) {
-	rows, err := s.db.Query(`SELECT id, idempotency_key, subscription_id, kind, provider, title, body, status, detail, created_at, updated_at FROM push_deliveries WHERE status = 'pending' ORDER BY created_at ASC`)
+	rows, err := s.db.Query(`SELECT ` + deliveryColumns + ` FROM push_deliveries WHERE status = 'pending' ORDER BY created_at ASC, id ASC`)
 	if err != nil {
 		return nil, err
 	}
@@ -742,8 +786,29 @@ func (s *Store) PendingDeliveries() ([]Delivery, error) {
 	return deliveries, rows.Err()
 }
 
-func (s *Store) UpdateDelivery(id string, status string, detail string, when time.Time) error {
-	_, err := s.db.Exec(`UPDATE push_deliveries SET status = ?, detail = ?, updated_at = ? WHERE id = ?`, status, detail, formatTime(when), id)
+func (s *Store) UpdateDelivery(id string, status string, detail string, attempts int, next time.Time, when time.Time) error {
+	nextAttempt := ""
+	if !next.IsZero() {
+		nextAttempt = formatTime(next)
+	}
+	_, err := s.db.Exec(
+		`UPDATE push_deliveries SET status = ?, detail = ?, attempts = ?, next_attempt_at = ?, updated_at = ? WHERE id = ?`,
+		status, detail, attempts, nextAttempt, formatTime(when), id,
+	)
+	return err
+}
+
+func (s *Store) CountPendingDeliveries() (int, error) {
+	var count int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM push_deliveries WHERE status = 'pending'`).Scan(&count)
+	return count, err
+}
+
+func (s *Store) ExpirePendingForSubscription(subscriptionID string, when time.Time) error {
+	_, err := s.db.Exec(
+		`UPDATE push_deliveries SET status = 'subscription_expired', detail = 'SUBSCRIPTION_EXPIRED', next_attempt_at = '', updated_at = ? WHERE subscription_id = ? AND status = 'pending'`,
+		formatTime(when), subscriptionID,
+	)
 	return err
 }
 
@@ -785,7 +850,8 @@ func scanDelivery(row scanner) (Delivery, error) {
 	var delivery Delivery
 	var created string
 	var updated string
-	err := row.Scan(&delivery.ID, &delivery.IdempotencyKey, &delivery.SubscriptionID, &delivery.Kind, &delivery.Provider, &delivery.Title, &delivery.Body, &delivery.Status, &delivery.Detail, &created, &updated)
+	var next string
+	err := row.Scan(&delivery.ID, &delivery.IdempotencyKey, &delivery.SubscriptionID, &delivery.Kind, &delivery.Provider, &delivery.Title, &delivery.Body, &delivery.Status, &delivery.Detail, &delivery.Attempts, &next, &created, &updated)
 	if err != nil {
 		return Delivery{}, err
 	}
@@ -794,7 +860,16 @@ func scanDelivery(row scanner) (Delivery, error) {
 		return Delivery{}, err
 	}
 	delivery.UpdatedAt, err = parseTime(updated)
-	return delivery, err
+	if err != nil {
+		return Delivery{}, err
+	}
+	if next != "" {
+		delivery.NextAttempt, err = parseTime(next)
+		if err != nil {
+			return Delivery{}, err
+		}
+	}
+	return delivery, nil
 }
 
 func enforceCap(tx *sql.Tx, deviceID string, now time.Time) error {

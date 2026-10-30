@@ -25,11 +25,12 @@ Nesta máquina, `cachedUsageUtilization.five_hour.resets_at` e `seven_day.resets
 | --- | --- | --- |
 | `rollout-*.jsonl` | Em pelo menos um arquivo local, `payload.rate_limits` não nulo com `used_percent`, `window_minutes`, `resets_at`, `plan_type`, `limit_id` | Sim, como efeito colateral da sessão. Outros arquivos não tinham o campo. O transcript está no mesmo JSONL. |
 | `auth.json` | Credencial local | Não ler e não enviar. |
-| `codex app-server` `account/rateLimits/read` | Leitura de conta | Fora da fatia. Usa a credencial para falar com a OpenAI. |
-| CodexBar | Aplicativo de terceiros que reenvia o token ao provedor | Ausente e rejeitado. |
+| `codex app-server` `account/rateLimits/read` | `rateLimits.primary` e `secondary`, com `usedPercent`, `windowDurationMins` e `resetsAt` em segundos Unix | Sim, desde o ADR 0015. O CLI local fala com a OpenAI. Este processo não lê o token. O teste usa um executável falso. |
+| CodexBar que lê `auth.json` | Token local reenviado à API do ChatGPT | Rejeitado. |
+| CodexBar que usa o app-server | O mesmo RPC do CLI, sem ler `auth.json` | O método foi adotado. O aplicativo não é dependência. |
 
 O formato acompanha o `RateLimitSnapshot` / `RateLimitWindow` publicados no protocolo do Codex (`usedPercent`, `windowDurationMins`, `resetsAt`), com os nomes em snake_case nos rollouts já gravados (`used_percent`, `window_minutes`, `resets_at`).
 
 ## Permissão desta fatia
 
-A coleta permitida é opt-in, por caminho explícito, restrita aos campos de janela acima. Não há autorização para chamada real com credencial, nem para gravar fixture a partir dos arquivos pessoais. Os testes usam `fixtures/synthetic/`.
+A coleta de arquivo continua opt-in, por caminho explícito, restrita aos campos de janela acima. O ADR 0015 autoriza só a leitura em que o comando `codex` fala com a OpenAI. Não há autorização para ler `auth.json`, chamar a API HTTP daqui, nem gravar fixture a partir dos arquivos pessoais. Os testes usam `fixtures/synthetic/` e um executável falso.

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -441,28 +442,41 @@ func windowName(minutes int64) string {
 }
 
 func rolloutFiles(dir string) ([]string, error) {
-	entries, err := os.ReadDir(dir)
+	info, err := os.Stat(dir)
 	if err != nil {
 		return nil, err
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("diretório de rollouts ilegível")
 	}
 	type fileInfo struct {
 		path string
 		mod  time.Time
 	}
 	var files []fileInfo
-	for _, entry := range entries {
+	err = filepath.WalkDir(dir, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			if entry != nil && entry.IsDir() {
+				return fs.SkipDir
+			}
+			return nil
+		}
 		if entry.IsDir() {
-			continue
+			return nil
 		}
 		name := entry.Name()
 		if !strings.HasPrefix(name, "rollout") || !strings.HasSuffix(name, ".jsonl") {
-			continue
+			return nil
 		}
 		info, err := entry.Info()
 		if err != nil {
-			continue
+			return nil
 		}
-		files = append(files, fileInfo{path: filepath.Join(dir, name), mod: info.ModTime()})
+		files = append(files, fileInfo{path: path, mod: info.ModTime()})
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	sort.Slice(files, func(i, j int) bool {
 		return files[i].mod.After(files[j].mod)

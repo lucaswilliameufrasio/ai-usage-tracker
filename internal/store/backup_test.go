@@ -53,7 +53,7 @@ func TestSnapshotRestoresCountsAndLeavesTheSource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if before.UserVersion != 3 || before.Accounts != 1 || before.Devices != 1 || before.Samples != 2 {
+	if before.UserVersion != schemaVersion || before.Accounts != 1 || before.Devices != 1 || before.Samples != 2 {
 		t.Fatalf("censo inicial %+v", before)
 	}
 	snapshot := filepath.Join(dir, "snapshots", "snapshot.db")

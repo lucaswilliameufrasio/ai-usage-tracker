@@ -29,6 +29,13 @@ import (
 
 const maxBody = 16 << 10
 
+const (
+	deliveryQueueCap     = 32
+	deliveryFlushLimit   = 8
+	deliveryAttemptLimit = 5
+	deliveryMaxAge       = 24 * time.Hour
+)
+
 type Server struct {
 	Store          *store.Store
 	Now            func() time.Time
@@ -606,7 +613,17 @@ func (s *Server) planAlerts(sample contract.Sample) error {
 			continue
 		}
 		for _, sub := range active {
-			if err := s.insertDelivery(intent, sub.ID, "pending", "", intent.Key+"|"+sub.ID); err != nil {
+			status := "pending"
+			detail := ""
+			pending, err := s.Store.CountPendingDeliveries()
+			if err != nil {
+				return err
+			}
+			if pending >= deliveryQueueCap {
+				status = "failed"
+				detail = "QUEUE_FULL"
+			}
+			if err := s.insertDelivery(intent, sub.ID, status, detail, intent.Key+"|"+sub.ID); err != nil {
 				return err
 			}
 		}
@@ -636,6 +653,13 @@ func (s *Server) insertDelivery(intent alert.Intent, subscriptionID string, stat
 	return err
 }
 
+func (s *Server) FlushDue() error {
+	if s.Now == nil {
+		s.Now = func() time.Time { return time.Now().UTC() }
+	}
+	return s.flush()
+}
+
 func (s *Server) flush() error {
 	if s.Sender == nil || !s.Sender.Configured() {
 		return nil
@@ -652,10 +676,30 @@ func (s *Server) flush() error {
 	for _, sub := range subs {
 		byID[sub.ID] = sub
 	}
+	now := s.Now()
+	sent := 0
+	dead := map[string]bool{}
 	for _, delivery := range pending {
+		if dead[delivery.SubscriptionID] {
+			continue
+		}
+		if now.Sub(delivery.CreatedAt) > deliveryMaxAge {
+			if err := s.Store.UpdateDelivery(delivery.ID, "failed", "DELIVERY_EXPIRED", delivery.Attempts, time.Time{}, now); err != nil {
+				return err
+			}
+			continue
+		}
+		if !delivery.NextAttempt.IsZero() && delivery.NextAttempt.After(now) {
+			continue
+		}
+		if sent >= deliveryFlushLimit {
+			break
+		}
 		sub, ok := byID[delivery.SubscriptionID]
 		if !ok || sub.ExpiredAt != nil {
-			_ = s.Store.UpdateDelivery(delivery.ID, "subscription_expired", "SUBSCRIPTION_EXPIRED", s.Now())
+			if err := s.Store.UpdateDelivery(delivery.ID, "subscription_expired", "SUBSCRIPTION_EXPIRED", delivery.Attempts, time.Time{}, now); err != nil {
+				return err
+			}
 			continue
 		}
 		payload, err := json.Marshal(map[string]string{
@@ -672,18 +716,48 @@ func (s *Server) flush() error {
 			P256dh:   sub.P256dh,
 			Auth:     sub.Auth,
 		}, payload)
+		attempts := delivery.Attempts + 1
 		if errors.Is(err, push.ErrGone) {
-			_ = s.Store.ExpireSubscription(sub.ID, s.Now(), "SUBSCRIPTION_EXPIRED")
-			_ = s.Store.UpdateDelivery(delivery.ID, "subscription_expired", "SUBSCRIPTION_EXPIRED", s.Now())
+			if err := s.Store.ExpireSubscription(sub.ID, now, "SUBSCRIPTION_EXPIRED"); err != nil {
+				return err
+			}
+			if err := s.Store.ExpirePendingForSubscription(sub.ID, now); err != nil {
+				return err
+			}
+			dead[sub.ID] = true
+			continue
+		}
+		if errors.Is(err, push.ErrRejected) || (err != nil && attempts >= deliveryAttemptLimit) {
+			if err := s.Store.UpdateDelivery(delivery.ID, "failed", "SEND_FAILED", attempts, time.Time{}, now); err != nil {
+				return err
+			}
+			sent++
 			continue
 		}
 		if err != nil {
-			_ = s.Store.UpdateDelivery(delivery.ID, "failed", "SEND_FAILED", s.Now())
+			if err := s.Store.UpdateDelivery(delivery.ID, "pending", "", attempts, now.Add(retryDelay(attempts)), now); err != nil {
+				return err
+			}
+			sent++
 			continue
 		}
-		_ = s.Store.UpdateDelivery(delivery.ID, "sent", "", s.Now())
+		if err := s.Store.UpdateDelivery(delivery.ID, "sent", "", attempts, time.Time{}, now); err != nil {
+			return err
+		}
+		sent++
 	}
 	return nil
+}
+
+func retryDelay(attempts int) time.Duration {
+	shift := attempts - 1
+	if shift < 0 {
+		shift = 0
+	}
+	if shift > 3 {
+		shift = 3
+	}
+	return time.Minute << shift
 }
 
 func (s *Server) ui(w http.ResponseWriter, r *http.Request) {

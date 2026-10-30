@@ -108,6 +108,23 @@ func main() {
 		defer cancel()
 		_ = httpServer.Shutdown(shutdownCtx)
 	}()
+	go func() {
+		ticker := time.NewTicker(time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if err := server.FlushDue(); err != nil {
+					logger.Error("avisos")
+				}
+			}
+		}
+	}()
+	if err := server.FlushDue(); err != nil {
+		logger.Error("avisos")
+	}
 	logger.Info("escuta", "addr", *addr)
 	if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		logger.Error("servidor")

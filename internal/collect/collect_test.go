@@ -86,6 +86,54 @@ func TestSameSnapshotKeepsIdentity(t *testing.T) {
 	}
 }
 
+func TestCodexKeepsOlderLimitsWhenANewerSessionHasNone(t *testing.T) {
+	root := t.TempDir()
+	older := filepath.Join(root, "2026", "09", "20")
+	newer := filepath.Join(root, "2026", "10", "28")
+	if err := os.MkdirAll(older, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(newer, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	limits := []byte(`{"timestamp":"2026-09-20T15:00:00Z","type":"event_msg","payload":{"type":"token_count","rate_limits":{"plan_type":"pro","primary":{"used_percent":25,"window_minutes":300,"resets_at":1761751800},"secondary":{"used_percent":12,"window_minutes":10080,"resets_at":1762354800}}}}` + "\n")
+	if err := os.WriteFile(filepath.Join(older, "rollout-old.jsonl"), limits, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(newer, "rollout-new.jsonl"), []byte(`{"timestamp":"2026-10-28T12:00:00Z","type":"session_meta","payload":{"type":"session_meta"}}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "auth.json"), []byte("CANARY_TOKEN"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	oldTime := time.Date(2026, 9, 20, 15, 0, 0, 0, time.UTC)
+	newTime := time.Date(2026, 10, 28, 12, 0, 0, 0, time.UTC)
+	if err := os.Chtimes(filepath.Join(older, "rollout-old.jsonl"), oldTime, oldTime); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(filepath.Join(newer, "rollout-new.jsonl"), newTime, newTime); err != nil {
+		t.Fatal(err)
+	}
+	batch, err := Read(Request{CodexDir: root, Now: time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(batch.Samples) != 1 || len(batch.Reports) != 0 {
+		t.Fatalf("samples %d reports %d", len(batch.Samples), len(batch.Reports))
+	}
+	observed := batch.Samples[0].SourceObservedAt
+	if observed == nil || !observed.Equal(oldTime) {
+		t.Fatal("a sessão nova sem limite escondeu a observação anterior")
+	}
+	raw, err := json.Marshal(batch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "CANARY_TOKEN") {
+		t.Fatal("arquivo ao lado do rollout entrou na amostra")
+	}
+}
+
 func TestOversizedRolloutLineIsUnreadable(t *testing.T) {
 	dir := t.TempDir()
 	line := append([]byte(`{"rate_limits":{"plan_type":"pro"},"pad":"`), bytes.Repeat([]byte("a"), (2<<20)+8)...)

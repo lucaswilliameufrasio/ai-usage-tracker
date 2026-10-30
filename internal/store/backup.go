@@ -65,7 +65,7 @@ func (s *Store) Snapshot(dest string) (Census, error) {
 	if err != nil {
 		return Census{}, err
 	}
-	if before.UserVersion != 3 {
+	if before.UserVersion != schemaVersion {
 		return Census{}, ErrSnapshotInvalid
 	}
 	if _, err := s.db.Exec(`VACUUM INTO ` + sqlString(dest)); err != nil {
@@ -116,7 +116,7 @@ func Inspect(path string) (Census, error) {
 		return Census{}, ErrSnapshotInvalid
 	}
 	census, err := readCensus(db)
-	if err != nil || census.UserVersion != 3 {
+	if err != nil || census.UserVersion != schemaVersion {
 		return Census{}, ErrSnapshotInvalid
 	}
 	return census, nil

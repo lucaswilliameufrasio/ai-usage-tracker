@@ -30,8 +30,23 @@ CREATE TABLE devices (
   created_at TEXT NOT NULL,
   revoked_at TEXT
 );
+CREATE TABLE push_deliveries (
+  id TEXT PRIMARY KEY,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  subscription_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  status TEXT NOT NULL,
+  detail TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
 INSERT INTO operator(id, token_hash, created_at) VALUES (1, 'hash-mantido', '2026-10-29T00:00:00Z');
 INSERT INTO devices(id, name, token_hash, created_at) VALUES ('dvc_antigo', 'antigo', 'hash-device', '2026-10-29T00:00:00Z');
+INSERT INTO push_deliveries(id, idempotency_key, subscription_id, kind, provider, title, body, status, detail, created_at, updated_at)
+VALUES ('dly_antigo', 'chave-antiga', '', 'threshold', 'claude', 't', 'b', 'sent', '', '2026-10-29T00:00:00Z', '2026-10-29T00:00:00Z');
 PRAGMA user_version = 1;
 `)
 	if err != nil {
@@ -63,8 +78,19 @@ PRAGMA user_version = 1;
 	if err := db.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != 3 {
+	if version != schemaVersion {
 		t.Fatalf("versão %d", version)
+	}
+	var attemptsColumn int
+	if err := db.db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('push_deliveries') WHERE name = 'attempts'`).Scan(&attemptsColumn); err != nil {
+		t.Fatal(err)
+	}
+	if attemptsColumn != 1 {
+		t.Fatal("fila sem tentativas")
+	}
+	deliveries, err := db.ListDeliveries(5)
+	if err != nil || len(deliveries) != 1 || deliveries[0].ID != "dly_antigo" || deliveries[0].Status != "sent" || deliveries[0].Attempts != 0 || !deliveries[0].NextAttempt.IsZero() {
+		t.Fatalf("%+v %v", deliveries, err)
 	}
 	rows, err := db.ListLoginProviders()
 	if err != nil {

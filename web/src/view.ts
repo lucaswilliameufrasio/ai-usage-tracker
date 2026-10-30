@@ -581,6 +581,28 @@ export function deliveryLabel(status: string): string {
   return "Estado desconhecido";
 }
 
+export function deliveryDetail(code: string): string {
+  if (code === "QUEUE_FULL") {
+    return "A fila de avisos está cheia.";
+  }
+  if (code === "DELIVERY_EXPIRED") {
+    return "O aviso passou do prazo.";
+  }
+  if (code === "SEND_FAILED") {
+    return "O envio falhou depois das tentativas.";
+  }
+  if (code === "PUSH_UNCONFIGURED") {
+    return "O push não está configurado.";
+  }
+  if (code === "SUBSCRIPTION_EXPIRED") {
+    return "A inscrição não aceita mais avisos.";
+  }
+  if (code === "QUIET_HOURS") {
+    return "O aviso ficou no horário silencioso.";
+  }
+  return "";
+}
+
 export function subscriptionLabel(status: string): string {
   if (status === "active") {
     return "Ativa";

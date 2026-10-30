@@ -27,7 +27,7 @@ func TestWizardAcceptsSuggestionsWithoutRepeatingSecrets(t *testing.T) {
 		t.Fatal(err)
 	}
 	var screen strings.Builder
-	input := strings.NewReader("http://127.0.0.1:8787\n\ncodigo-teste\n\n\n\n")
+	input := strings.NewReader("http://127.0.0.1:8787\n\ncodigo-teste\n\n\n\n\n")
 	file, code, name, err := runWizard(wizardOptions{
 		in:        input,
 		out:       &screen,
@@ -42,14 +42,43 @@ func TestWizardAcceptsSuggestionsWithoutRepeatingSecrets(t *testing.T) {
 	if file.API != "http://127.0.0.1:8787" || file.ClaudeFile != filepath.Join(home, ".claude.json") || file.CodexDir != filepath.Join(home, ".codex", "sessions") {
 		t.Fatalf("%+v", file)
 	}
-	if code != "codigo-teste" || name != "notebook" {
-		t.Fatalf("code %s name %s", code, name)
+	if code != "codigo-teste" || name != "notebook" || file.AutoUpdate {
+		t.Fatalf("code %s name %s update %v", code, name, file.AutoUpdate)
 	}
-	shown := screen.String()
+	shown := strings.ReplaceAll(screen.String(), home, "")
 	if strings.Contains(shown, "codigo-teste") || strings.Contains(shown, "41") || strings.Contains(shown, "25") {
 		t.Fatal("a tela repetiu código ou percentual")
 	}
-	if !strings.Contains(shown, "20/09/2026 15:00 UTC") {
+	codexWhen := time.Date(2026, 9, 20, 15, 0, 0, 0, time.UTC).In(time.Local).Format("02/01/2006 15:04 MST")
+	if !strings.Contains(shown, codexWhen) || !strings.Contains(shown, "Atualização automática desligada.") {
+		t.Fatal(shown)
+	}
+}
+
+func TestWizardCanEnableAutoUpdate(t *testing.T) {
+	home := t.TempDir()
+	var screen strings.Builder
+	input := strings.NewReader("http://127.0.0.1:8787\n\ncodigo-teste\n\n\ns\n\n")
+	file, code, _, err := runWizard(wizardOptions{
+		in:        input,
+		out:       &screen,
+		home:      home,
+		now:       time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC),
+		saved:     agent.File{ClaudeFile: filepath.Join(home, ".claude.json")},
+		tokenPath: filepath.Join(home, "device.token"),
+		spoolPath: filepath.Join(home, "spool.json"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !file.AutoUpdate || code != "codigo-teste" || file.ClaudeFile == "" {
+		t.Fatalf("%+v", file)
+	}
+	shown := strings.ReplaceAll(screen.String(), home, "")
+	if strings.Contains(shown, "codigo-teste") || strings.Contains(shown, "41") || strings.Contains(shown, "25") {
+		t.Fatal("a tela repetiu código ou percentual")
+	}
+	if !strings.Contains(shown, "Atualização automática ligada.") {
 		t.Fatal(shown)
 	}
 }

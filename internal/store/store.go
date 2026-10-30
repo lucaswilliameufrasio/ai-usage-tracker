@@ -28,7 +28,7 @@ var (
 
 const observationCap = 240
 
-const schemaVersion = 4
+const schemaVersion = 5
 
 const deliveryColumns = `id, idempotency_key, subscription_id, kind, provider, title, body, status, detail, attempts, next_attempt_at, created_at, updated_at`
 
@@ -153,6 +153,13 @@ func (s *Store) migrate() error {
 		if err := s.migrateV4(); err != nil {
 			return err
 		}
+		version = 4
+	}
+	if version < 5 {
+		if err := s.migrateV5(); err != nil {
+			return err
+		}
+		version = 5
 	}
 	return nil
 }
@@ -316,6 +323,32 @@ func (s *Store) migrateV4() error {
 		return fmt.Errorf("migrar fila: %w", err)
 	}
 	if _, err := s.db.Exec(`PRAGMA user_version = 4`); err != nil {
+		return fmt.Errorf("gravar versão: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) migrateV5() error {
+	schema := `
+CREATE TABLE sabia_link (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  origin TEXT NOT NULL,
+  application_id TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE sabia_template (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  name TEXT NOT NULL,
+  subject TEXT NOT NULL,
+  html TEXT NOT NULL,
+  text TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+`
+	if _, err := s.db.Exec(schema); err != nil {
+		return fmt.Errorf("migrar sabiá: %w", err)
+	}
+	if _, err := s.db.Exec(`PRAGMA user_version = 5`); err != nil {
 		return fmt.Errorf("gravar versão: %w", err)
 	}
 	return nil

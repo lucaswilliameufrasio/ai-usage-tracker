@@ -140,6 +140,126 @@ describe("tela de acesso", () => {
       dom.window.close();
     }
   });
+
+  it("edita o template do Sabiá sem mostrar a chave", async () => {
+    const hiddenKey = "sb_deploy_nao_mostrar";
+    const calls: Array<{ method: string; url: string; body: string }> = [];
+    const previous = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input instanceof URL ? input.toString() : String(input);
+      const method = init?.method ?? "GET";
+      const body = typeof init?.body === "string" ? init.body : "";
+      calls.push({ method, url, body });
+      if (url.endsWith("/v1/admin/secret-backend")) {
+        return json({ kind: "own", ready: true });
+      }
+      if (url.endsWith("/v1/admin/login-providers") && method === "GET") {
+        return json({
+          data: [
+            { provider: "github", enabled: false, configured: false, secret_present: false },
+            { provider: "gitea", enabled: false, configured: false, secret_present: false },
+            { provider: "google", enabled: false, configured: false, secret_present: false },
+            { provider: "apple", enabled: false, configured: false, secret_present: false },
+          ],
+        });
+      }
+      if (url.endsWith("/v1/admin/sabia") && method === "GET") {
+        return json({
+          origin: "https://sabia.exemplo",
+          deploy_key_present: true,
+          deploy_key: hiddenKey,
+          template: {
+            name: "Alerta de uso",
+            subject: "Uso de {{provider}}",
+            html: "<p>{{used}}</p>",
+            text: "{{used}}",
+          },
+        });
+      }
+      if (url.endsWith("/v1/admin/sabia") && method === "PUT") {
+        return json({
+          origin: "https://sabia.exemplo",
+          deploy_key_present: true,
+          template: {
+            name: "Alerta de uso",
+            subject: "Uso de {{provider}}",
+            html: "<p>{{used}}</p>",
+            text: "{{used}}",
+          },
+        });
+      }
+      if (url.endsWith("/v1/admin/sabia/plan") && method === "POST") {
+        return json({
+          changes: [{ id: "usage-alert-v1", operation: "criar", confirmation_required: true }],
+        });
+      }
+      if (url.endsWith("/v1/admin/sabia/apply") && method === "POST") {
+        return json({ applied: 1, unchanged: 0 });
+      }
+      return json({ message: "não encontrado", error_code: "NOT_FOUND" }, 404);
+    }) as typeof fetch;
+    const dom = new JSDOM(`<!doctype html><html><body><div id="app"></div></body></html>`, {
+      url: "http://127.0.0.1:8787/acesso",
+      pretendToBeVisual: true,
+    });
+    try {
+      const view = dom.window;
+      view.localStorage.setItem(operatorTokenKey, "op_teste");
+      const root = view.document.querySelector("#app");
+      if (!(root instanceof view.HTMLElement)) {
+        throw new Error("raiz ausente");
+      }
+      const app = await import("../src/app.ts");
+      app.start(root);
+      await waitFor(() => root.textContent?.includes("Sincronizar publica no Sabiá") === true, root);
+      assert.equal(root.textContent?.includes(hiddenKey), false);
+      assert.equal(root.textContent?.includes("Não apaga templates"), true);
+      const form = root.querySelector("form[data-panel='sabia']");
+      if (!(form instanceof view.HTMLFormElement)) {
+        throw new Error("formulário do Sabiá ausente");
+      }
+      const secret = form.querySelector("[data-secret='sabia']");
+      if (!(secret instanceof view.HTMLInputElement)) {
+        throw new Error("chave ausente");
+      }
+      assert.equal(secret.type, "password");
+      assert.equal(secret.value, "");
+      const plan = form.querySelector("[data-action='sabia-plan']");
+      if (!(plan instanceof view.HTMLButtonElement)) {
+        throw new Error("plano ausente");
+      }
+      plan.click();
+      await waitFor(() => root.textContent?.includes("Confirmar usage-alert-v1") === true, root);
+      const box = root.querySelector("[data-confirm='usage-alert-v1']");
+      if (!(box instanceof view.HTMLInputElement)) {
+        throw new Error("confirmação ausente");
+      }
+      box.checked = true;
+      const sync = root.querySelector("[data-action='sabia-apply']");
+      if (!(sync instanceof view.HTMLButtonElement)) {
+        throw new Error("sincronizar ausente");
+      }
+      sync.click();
+      await waitFor(() => root.textContent?.includes("Sincronizado com o Sabiá") === true, root);
+      assert.equal(root.textContent?.includes(hiddenKey), false);
+      assert.equal(root.textContent?.includes("Aplicado: 1"), true);
+      const puts = calls.filter((call) => call.method === "PUT" && call.url.endsWith("/v1/admin/sabia"));
+      assert.equal(puts.length >= 1, true);
+      for (const put of puts) {
+        assert.equal(put.body.includes(hiddenKey), false);
+      }
+      const apply = calls.find((call) => call.method === "POST" && call.url.endsWith("/v1/admin/sabia/apply"));
+      assert.equal(apply?.body.includes("usage-alert-v1"), true);
+      const planCall = calls.find((call) => call.method === "POST" && call.url.endsWith("/plan"));
+      assert.equal(planCall === undefined, false);
+      const planIndex = calls.findIndex((call) => call.url.endsWith("/plan"));
+      const firstPut = calls.findIndex((call) => call.method === "PUT" && call.url.endsWith("/v1/admin/sabia"));
+      assert.equal(firstPut >= 0 && firstPut < planIndex, true);
+    } finally {
+      globalThis.fetch = previous;
+      dom.window.close();
+    }
+  });
 });
 
 function json(value: unknown, status = 200): Response {

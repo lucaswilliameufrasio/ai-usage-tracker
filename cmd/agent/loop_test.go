@@ -9,6 +9,63 @@ import (
 	"ai-usage-tracker/internal/agent"
 )
 
+func TestUpdateFailureStillSends(t *testing.T) {
+	previous := applyUpdate
+	applyUpdate = func(context.Context, agent.UpdateOptions) error {
+		return errors.New("checksum")
+	}
+	t.Cleanup(func() { applyUpdate = previous })
+	sent := false
+	code := runPasses(context.Background(), time.Hour, time.Second, passWithUpdate(context.Background(), agent.File{AutoUpdate: true}, func(context.Context) (agent.Result, error) {
+		sent = true
+		return agent.Result{Accepted: 1}, nil
+	}), func(context.Context, time.Duration) bool {
+		return false
+	})
+	if !sent || code != 0 {
+		t.Fatalf("sent %v code %d", sent, code)
+	}
+}
+
+func TestUpdateSignalSkipsTheSend(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	previous := applyUpdate
+	applyUpdate = func(updateCtx context.Context, _ agent.UpdateOptions) error {
+		cancel()
+		<-updateCtx.Done()
+		return updateCtx.Err()
+	}
+	t.Cleanup(func() { applyUpdate = previous })
+	sent := false
+	code := runPasses(ctx, time.Hour, time.Second, passWithUpdate(ctx, agent.File{AutoUpdate: true}, func(context.Context) (agent.Result, error) {
+		sent = true
+		return agent.Result{}, nil
+	}), func(context.Context, time.Duration) bool {
+		t.Fatal("não espera outra passagem")
+		return false
+	})
+	if sent || code != 0 {
+		t.Fatalf("sent %v code %d", sent, code)
+	}
+}
+
+func TestDisabledUpdateDoesNotRun(t *testing.T) {
+	previous := applyUpdate
+	applyUpdate = func(context.Context, agent.UpdateOptions) error {
+		t.Fatal("atualizou desligado")
+		return nil
+	}
+	t.Cleanup(func() { applyUpdate = previous })
+	code := runPasses(context.Background(), time.Hour, time.Second, passWithUpdate(context.Background(), agent.File{}, func(context.Context) (agent.Result, error) {
+		return agent.Result{Accepted: 1}, nil
+	}), func(context.Context, time.Duration) bool {
+		return false
+	})
+	if code != 0 {
+		t.Fatal(code)
+	}
+}
+
 func TestRunPassesLetsTheCurrentSendFinish(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	finished := false

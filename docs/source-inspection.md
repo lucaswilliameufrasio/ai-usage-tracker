@@ -34,3 +34,15 @@ O formato acompanha o `RateLimitSnapshot` / `RateLimitWindow` publicados no prot
 ## Permissão desta fatia
 
 A coleta de arquivo continua opt-in, por caminho explícito, restrita aos campos de janela acima. O ADR 0015 autoriza só a leitura em que o comando `codex` fala com a OpenAI. Não há autorização para ler `auth.json`, chamar a API HTTP daqui, nem gravar fixture a partir dos arquivos pessoais. Os testes usam `fixtures/synthetic/` e um executável falso.
+
+## OpenCode, Antigravity e Grok Build — 2026-10-30
+
+Inspeção de nomes e da documentação local. Os arquivos de autenticação, conta e banco desses clientes não foram abertos. Nenhum percentual foi copiado.
+
+| Cliente | O que apareceu | Serve como limite e reset? |
+| --- | --- | --- |
+| OpenCode | Binário local e arquivos de conta, autenticação e banco. Nenhum nome de arquivo de uso, limite ou reset. | Não. Sem contrato local de janela. |
+| Antigravity | Binário `agy` e um arquivo de token OAuth. Nenhum nome de arquivo de uso, limite ou reset. | Não. O token não foi lido. |
+| Grok Build | Binário `grok`. O guia local de monitoramento descreve OpenTelemetry externo, desligado por padrão, com contagem de tokens. Pode anexar e-mail. Não é um arquivo de percentual e reset. | Não. Não ligar o exportador e não ler a sessão. |
+
+Estes três não entram no coletor até existir um contrato local de janela, no mesmo espírito de Claude e Codex, sem credencial e sem prompt.

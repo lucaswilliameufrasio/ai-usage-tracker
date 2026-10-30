@@ -18,6 +18,19 @@ import {
 export const operatorTokenKey = "tracker.operator_token";
 export const overviewCacheKey = "tracker.overview.cache";
 
+export function overviewCacheStorageKey(person: boolean): string {
+  if (person) {
+    return `${overviewCacheKey}.person`;
+  }
+  return `${overviewCacheKey}.operator`;
+}
+
+export function clearOverviewCache(storage: Pick<Storage, "removeItem">): void {
+  storage.removeItem(overviewCacheKey);
+  storage.removeItem(overviewCacheStorageKey(true));
+  storage.removeItem(overviewCacheStorageKey(false));
+}
+
 export type RouteName = "overview" | "history" | "devices" | "alerts" | "access";
 
 export type LoginProviderName = "github" | "gitea" | "google" | "apple";
@@ -38,6 +51,23 @@ export type LoginProviderView = {
 export type SecretBackendView = {
   kind: string;
   ready: boolean;
+};
+
+export type SabiaChangeView = {
+  id: string;
+  operation: string;
+  confirmationRequired: boolean;
+};
+
+export type SabiaView = {
+  origin: string;
+  applicationId: string;
+  deployKeyPresent: boolean;
+  name: string;
+  subject: string;
+  html: string;
+  text: string;
+  changes?: SabiaChangeView[];
 };
 
 export type WindowView = {
@@ -63,10 +93,18 @@ export type ProviderCard = {
   projection?: ProjectionView;
 };
 
+export type AccountView = {
+  id: string;
+  label: string;
+  login: string;
+  providers: ProviderCard[];
+};
+
 export type Overview = {
   generatedAt: string;
   staleAfterSeconds: number;
   providers: ProviderCard[];
+  accounts?: AccountView[];
 };
 
 export type HistorySample = {
@@ -281,6 +319,31 @@ const secretBackendSchema = object({
   ready: boolean(),
 });
 
+const sabiaSchema = object({
+  origin: optional(string()),
+  application_id: optional(string()),
+  deploy_key_present: boolean(),
+  template: object({
+    name: string(),
+    subject: string(),
+    html: string(),
+    text: string(),
+  }),
+});
+
+const sabiaPlanSchema = object({
+  changes: array(object({
+    id: string(),
+    operation: string(),
+    confirmation_required: boolean(),
+  })),
+});
+
+const sabiaApplySchema = object({
+  applied: pipe(number(), finite()),
+  unchanged: pipe(number(), finite()),
+});
+
 const loginProviderSchema = object({
   provider: loginNameSchema,
   enabled: boolean(),
@@ -343,6 +406,50 @@ export function parseSecretBackend(value: unknown): Parsed<SecretBackendView> {
     return fail("O cofre veio ilegível.");
   }
   return { ok: true, value: { kind: parsed.output.kind, ready: parsed.output.ready } };
+}
+
+export function parseSabia(value: unknown): Parsed<SabiaView> {
+  const parsed = safeParse(sabiaSchema, value);
+  if (!parsed.success) {
+    return fail("O Sabiá veio ilegível.");
+  }
+  const item = parsed.output;
+  return {
+    ok: true,
+    value: {
+      origin: item.origin ?? "",
+      applicationId: item.application_id ?? "",
+      deployKeyPresent: item.deploy_key_present,
+      name: item.template.name,
+      subject: item.template.subject,
+      html: item.template.html,
+      text: item.template.text,
+    },
+  };
+}
+
+export function parseSabiaPlan(value: unknown): Parsed<SabiaChangeView[]> {
+  const parsed = safeParse(sabiaPlanSchema, value);
+  if (!parsed.success) {
+    return fail("O plano do Sabiá veio ilegível.");
+  }
+  const changes: SabiaChangeView[] = [];
+  for (const item of parsed.output.changes) {
+    changes.push({
+      id: item.id,
+      operation: item.operation,
+      confirmationRequired: item.confirmation_required,
+    });
+  }
+  return { ok: true, value: changes };
+}
+
+export function parseSabiaApply(value: unknown): Parsed<{ applied: number; unchanged: number }> {
+  const parsed = safeParse(sabiaApplySchema, value);
+  if (!parsed.success) {
+    return fail("A sincronização do Sabiá veio ilegível.");
+  }
+  return { ok: true, value: { applied: parsed.output.applied, unchanged: parsed.output.unchanged } };
 }
 
 export function parseLoginCatalog(value: unknown): Parsed<LoginProviderView[]> {
@@ -411,17 +518,42 @@ function presentString(value: string | undefined): value is string {
   return value !== undefined && value !== "";
 }
 
-export function formatInstant(iso: string): string {
+export function formatInstant(iso: string, timeZone?: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) {
     return "instante desconhecido";
   }
-  const day = String(date.getUTCDate()).padStart(2, "0");
-  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
-  const year = String(date.getUTCFullYear());
-  const hour = String(date.getUTCHours()).padStart(2, "0");
-  const minute = String(date.getUTCMinutes()).padStart(2, "0");
-  return `${day}/${month}/${year} ${hour}:${minute} UTC`;
+  const zone = timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const parts = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: zone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+    timeZoneName: "short",
+  }).formatToParts(date);
+  const day = partText(parts, "day");
+  const month = partText(parts, "month");
+  const year = partText(parts, "year");
+  const hour = partText(parts, "hour");
+  const minute = partText(parts, "minute");
+  const zoneName = partText(parts, "timeZoneName");
+  const clock = `${day}/${month}/${year} ${hour}:${minute}`;
+  if (zoneName === "") {
+    return clock;
+  }
+  return `${clock} ${zoneName}`;
+}
+
+function partText(parts: Intl.DateTimeFormatPart[], type: Intl.DateTimeFormatPartTypes): string {
+  for (const part of parts) {
+    if (part.type === type) {
+      return part.value.replace(/[\u202f\u00a0]/g, "");
+    }
+  }
+  return "";
 }
 
 export function formatUsed(value: number): string {
@@ -642,10 +774,18 @@ const cardSchema = object({
   projection: optional(unknown()),
 });
 
+const accountSchema = object({
+  id: string(),
+  label: string(),
+  login: optional(fallback(string(), "")),
+  providers: optional(array(unknown())),
+});
+
 const overviewSchema = object({
   generated_at: optional(fallback(string(), "")),
   stale_after_seconds: optional(fallback(finiteNumber, 0)),
-  providers: array(unknown()),
+  providers: optional(array(unknown())),
+  accounts: optional(array(unknown())),
 });
 
 const cachedOverviewSchema = object({
@@ -717,8 +857,59 @@ export function parseOverview(value: unknown): Parsed<Overview> {
   if (!parsed.success) {
     return fail("A visão geral não tem provedores.");
   }
+  const generatedAt = parsed.output.generated_at ?? "";
+  const staleAfterSeconds = parsed.output.stale_after_seconds ?? 0;
+  if (parsed.output.accounts !== undefined) {
+    const accounts: AccountView[] = [];
+    for (const item of parsed.output.accounts) {
+      const account = parseAccount(item);
+      if (account !== undefined) {
+        accounts.push(account);
+      }
+    }
+    return {
+      ok: true,
+      value: {
+        generatedAt,
+        staleAfterSeconds,
+        providers: [],
+        accounts,
+      },
+    };
+  }
+  if (parsed.output.providers === undefined) {
+    return fail("A visão geral não tem provedores.");
+  }
+  return {
+    ok: true,
+    value: {
+      generatedAt,
+      staleAfterSeconds,
+      providers: normalizeCards(parsed.output.providers),
+    },
+  };
+}
+
+function parseAccount(value: unknown): AccountView | undefined {
+  const parsed = safeParse(accountSchema, value);
+  if (!parsed.success) {
+    return undefined;
+  }
+  const label = parsed.output.label.trim();
+  if (label === "") {
+    return undefined;
+  }
+  return {
+    id: parsed.output.id,
+    label,
+    login: parsed.output.login ?? "",
+    providers: normalizeCards(parsed.output.providers ?? []),
+  };
+}
+
+function normalizeCards(items: unknown[]): ProviderCard[] {
   const found = new Map<"claude" | "codex", ProviderCard>();
-  for (const item of parsed.output.providers) {
+  for (const item of items) {
     const card = parseCard(item);
     if (card !== undefined) {
       found.set(card.provider, card);
@@ -726,14 +917,7 @@ export function parseOverview(value: unknown): Parsed<Overview> {
   }
   const claude = found.get("claude") ?? emptyCard("claude");
   const codex = found.get("codex") ?? emptyCard("codex");
-  return {
-    ok: true,
-    value: {
-      generatedAt: parsed.output.generated_at ?? "",
-      staleAfterSeconds: parsed.output.stale_after_seconds ?? 0,
-      providers: [claude, codex],
-    },
-  };
+  return [claude, codex];
 }
 
 export function parseCachedOverview(value: unknown): Parsed<Overview> {

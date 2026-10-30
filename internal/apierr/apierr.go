@@ -27,6 +27,7 @@ const (
 	CodeSetupRequired     = "SETUP_TOKEN_REQUIRED"
 	CodeLastLogin         = "LAST_LOGIN_METHOD"
 	CodeVaultUnavailable  = "VAULT_UNAVAILABLE"
+	CodeUpstream          = "UPSTREAM_REJECTED"
 )
 
 type FieldError struct {

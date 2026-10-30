@@ -7,8 +7,10 @@ import {
   loginCallbackPath,
   loginGuide,
   loginLabel,
+  clearOverviewCache,
   operatorTokenKey,
   overviewCacheKey,
+  overviewCacheStorageKey,
   parseCachedOverview,
   parseDeliveries,
   parseDevices,
@@ -16,6 +18,9 @@ import {
   parseLoginCatalog,
   parseLoginProvider,
   parsePublicLogins,
+  parseSabia,
+  parseSabiaApply,
+  parseSabiaPlan,
   parseSecretBackend,
   parseSession,
   isRecord,
@@ -32,6 +37,7 @@ import {
   staffTone,
   subscriptionLabel,
   windowLabel,
+  type AccountView,
   type DeliveryView,
   type DeviceView,
   type HistorySample,
@@ -39,6 +45,8 @@ import {
   type Overview,
   type ProviderCard,
   type RouteName,
+  type SabiaChangeView,
+  type SabiaView,
   type SecretBackendView,
   type SettingsView,
   type SubscriptionView,
@@ -71,6 +79,7 @@ type PageState =
       route: "access";
       backend?: SecretBackendView;
       providers: LoginProviderView[];
+      sabia?: SabiaView;
       problem: string;
     };
 
@@ -294,7 +303,7 @@ async function signOut(view: Window, state: AppState, paint: () => void): Promis
   state.notice = "";
   state.page = { route: "overview", fromCache: false, problem: "" };
   view.localStorage.removeItem(operatorTokenKey);
-  view.localStorage.removeItem(overviewCacheKey);
+  clearOverviewCache(view.localStorage);
   paint();
   void enterAsPerson(view, state, paint);
 }
@@ -349,9 +358,16 @@ function revokeRequest(state: AppState, id: string): string {
 
 function overviewView(doc: Document, view: Window, state: AppState, paint: () => void): HTMLElement {
   const page = state.page.route === "overview" ? state.page : { route: "overview" as const, fromCache: false, problem: "" };
+  const accounts = page.overview?.accounts;
+  const grouped = accounts !== undefined;
   const wrap = doc.createElement("section");
-  wrap.append(el(doc, "h1", "", "Duas medições"));
-  wrap.append(el(doc, "p", "lede", "Cada régua sobe com o percentual usado. A linha de latão marca 80%."));
+  if (grouped) {
+    wrap.append(el(doc, "h1", "", "Contas"));
+    wrap.append(el(doc, "p", "lede", "Cada conta mostra as próprias medições. A linha de latão marca 80%."));
+  } else {
+    wrap.append(el(doc, "h1", "", "Duas medições"));
+    wrap.append(el(doc, "p", "lede", "Cada régua sobe com o percentual usado. A linha de latão marca 80%."));
+  }
   const refresh = button(doc, "Atualizar", "");
   refresh.dataset.action = "refresh";
   refresh.addEventListener("click", () => {
@@ -371,13 +387,39 @@ function overviewView(doc: Document, view: Window, state: AppState, paint: () =>
   if (page.overview.generatedAt !== "" && !page.fromCache) {
     wrap.append(el(doc, "p", "meta", `Servidor consultado em ${formatInstant(page.overview.generatedAt)}.`));
   }
+  if (grouped && accounts !== undefined) {
+    if (accounts.length === 0) {
+      wrap.append(el(doc, "p", "", "Nenhuma conta com dispositivo."));
+      return wrap;
+    }
+    for (const account of accounts) {
+      wrap.append(accountSection(doc, account, page.fromCache));
+    }
+    return wrap;
+  }
+  wrap.append(providerBoard(doc, page.overview.providers, page.fromCache));
+  return wrap;
+}
+
+function accountSection(doc: Document, account: AccountView, fromCache: boolean): HTMLElement {
+  const section = doc.createElement("section");
+  section.className = "account";
+  section.dataset.account = account.id;
+  section.append(el(doc, "h2", "account-label", account.label));
+  if (account.login !== "") {
+    section.append(el(doc, "p", "meta", loginLabel(account.login)));
+  }
+  section.append(providerBoard(doc, account.providers, fromCache));
+  return section;
+}
+
+function providerBoard(doc: Document, cards: ProviderCard[], fromCache: boolean): HTMLElement {
   const board = doc.createElement("div");
   board.className = "board";
-  for (const card of page.overview.providers) {
-    board.append(providerCard(doc, card, page.fromCache));
+  for (const card of cards) {
+    board.append(providerCard(doc, card, fromCache));
   }
-  wrap.append(board);
-  return wrap;
+  return board;
 }
 
 function providerCard(doc: Document, card: ProviderCard, fromCache: boolean): HTMLElement {
@@ -622,10 +664,98 @@ function accessView(doc: Document, view: Window, state: AppState, paint: () => v
   if (page.problem !== "") {
     wrap.append(note(doc, page.problem, "problem"));
   }
+  if (page.sabia !== undefined) {
+    wrap.append(sabiaForm(doc, view, state, page.sabia, paint));
+  }
   for (const item of page.providers) {
     wrap.append(loginForm(doc, view, state, item, paint));
   }
   return wrap;
+}
+
+function sabiaForm(doc: Document, view: Window, state: AppState, item: SabiaView, paint: () => void): HTMLFormElement {
+  const form = doc.createElement("form");
+  form.className = "stack access-form";
+  form.dataset.panel = "sabia";
+  form.append(el(doc, "h2", "", "Sabiá"));
+  const kept = item.deployKeyPresent ? "Chave de deploy guardada." : "Nenhuma chave de deploy guardada.";
+  form.append(el(doc, "p", "meta", kept));
+  form.append(el(doc, "p", "", "Edite o template aqui e sincronize sem abrir a plataforma. A chave entra no cofre e não volta para esta tela."));
+  form.append(el(doc, "p", "", "Sincronizar publica no Sabiá. Não apaga templates que não estão aqui."));
+  form.append(field(doc, "Endereço", "url", "origin", item.origin));
+  form.append(field(doc, "Id da aplicação", "text", "application_id", item.applicationId));
+  form.append(sabiaKeyField(doc));
+  form.append(field(doc, "Nome", "text", "name", item.name));
+  form.append(field(doc, "Assunto", "text", "subject", item.subject));
+  form.append(textBlock(doc, "HTML", "html", item.html));
+  form.append(textBlock(doc, "Texto", "text", item.text));
+  if (item.changes !== undefined) {
+    if (item.changes.length === 0) {
+      form.append(el(doc, "p", "", "Nenhuma mudança."));
+    }
+    for (const change of item.changes) {
+      form.append(sabiaChange(doc, change));
+    }
+  }
+  const save = button(doc, "Guardar", "primary");
+  save.type = "submit";
+  const plan = button(doc, "Ver plano", "");
+  plan.dataset.action = "sabia-plan";
+  const sync = button(doc, "Sincronizar", "primary");
+  sync.dataset.action = "sabia-apply";
+  form.append(save, plan, sync);
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void saveSabia(view, state, form, paint);
+  });
+  plan.addEventListener("click", () => {
+    void planSabia(view, state, form, paint);
+  });
+  sync.addEventListener("click", () => {
+    void applySabia(view, state, form, paint);
+  });
+  return form;
+}
+
+function sabiaChange(doc: Document, change: SabiaChangeView): HTMLElement {
+  const row = doc.createElement("div");
+  row.append(el(doc, "p", "", `${change.operation}: ${change.id}`));
+  if (change.confirmationRequired) {
+    const label = el(doc, "label", "check", `Confirmar ${change.id}`);
+    const input = doc.createElement("input");
+    input.type = "checkbox";
+    input.value = change.id;
+    input.dataset.confirm = change.id;
+    label.prepend(input);
+    row.append(label);
+  }
+  return row;
+}
+
+function sabiaKeyField(doc: Document): HTMLLabelElement {
+  const label = doc.createElement("label");
+  label.textContent = "Chave de deploy";
+  const input = doc.createElement("input");
+  input.type = "password";
+  input.name = "deploy_key";
+  input.autocomplete = "off";
+  input.spellcheck = false;
+  input.placeholder = "Deixe vazio para manter a chave guardada.";
+  input.value = "";
+  input.dataset.secret = "sabia";
+  label.append(input);
+  return label;
+}
+
+function textBlock(doc: Document, labelText: string, name: string, value: string): HTMLLabelElement {
+  const label = doc.createElement("label");
+  label.textContent = labelText;
+  const input = doc.createElement("textarea");
+  input.name = name;
+  input.rows = 6;
+  input.value = value;
+  label.append(input);
+  return label;
 }
 
 function loginForm(
@@ -777,17 +907,36 @@ async function loadAccess(view: Window, state: AppState, paint: () => void): Pro
       loseSession(view, state, providersResult.message, paint);
       return;
     }
-    state.page = accessState(backend.value, [], providersResult.message);
+    state.page = accessState(backend.value, [], providersResult.message, undefined);
     paint();
     return;
   }
   const providers = parseLoginCatalog(providersResult.body);
   if (!providers.ok) {
-    state.page = accessState(backend.value, [], providers.message);
+    state.page = accessState(backend.value, [], providers.message, undefined);
     paint();
     return;
   }
-  state.page = accessState(backend.value, providers.value, "");
+  const sabiaResult = await apiRequest(view.location.origin, "/v1/admin/sabia", state.token, "GET");
+  if (loadId !== state.loadId) {
+    return;
+  }
+  if (!sabiaResult.ok) {
+    if (sabiaResult.status === 401) {
+      loseSession(view, state, sabiaResult.message, paint);
+      return;
+    }
+    state.page = accessState(backend.value, providers.value, "", undefined);
+    paint();
+    return;
+  }
+  const sabia = parseSabia(sabiaResult.body);
+  if (!sabia.ok) {
+    state.page = accessState(backend.value, providers.value, sabia.message, undefined);
+    paint();
+    return;
+  }
+  state.page = accessState(backend.value, providers.value, "", sabia.value);
   paint();
 }
 
@@ -823,18 +972,18 @@ async function saveLogin(
       loseSession(view, state, result.message, paint);
       return;
     }
-    state.page = accessState(current.backend, current.providers, result.message);
+    state.page = accessState(current.backend, current.providers, result.message, current.sabia);
     paint();
     return;
   }
   const parsed = parseLoginProvider(result.body);
   if (!parsed.ok) {
-    state.page = accessState(current.backend, current.providers, parsed.message);
+    state.page = accessState(current.backend, current.providers, parsed.message, current.sabia);
     paint();
     return;
   }
   state.notice = "Login guardado. O segredo não volta para esta tela.";
-  state.page = accessState(current.backend, replaceProvider(current.providers, parsed.value), "");
+  state.page = accessState(current.backend, replaceProvider(current.providers, parsed.value), "", current.sabia);
   paint();
 }
 
@@ -850,18 +999,18 @@ async function removeLogin(view: Window, state: AppState, provider: string, pain
       loseSession(view, state, result.message, paint);
       return;
     }
-    state.page = accessState(current.backend, current.providers, result.message);
+    state.page = accessState(current.backend, current.providers, result.message, current.sabia);
     paint();
     return;
   }
   const parsed = parseLoginProvider(result.body);
   if (!parsed.ok) {
-    state.page = accessState(current.backend, current.providers, parsed.message);
+    state.page = accessState(current.backend, current.providers, parsed.message, current.sabia);
     paint();
     return;
   }
   state.notice = "Login removido.";
-  state.page = accessState(current.backend, replaceProvider(current.providers, parsed.value), "");
+  state.page = accessState(current.backend, replaceProvider(current.providers, parsed.value), "", current.sabia);
   paint();
 }
 
@@ -869,21 +1018,183 @@ function accessState(
   backend: SecretBackendView | undefined,
   providers: LoginProviderView[],
   problem: string,
+  sabia: SabiaView | undefined,
 ): Extract<PageState, { route: "access" }> {
-  if (backend === undefined) {
-    return { route: "access", providers, problem };
+  const page: Extract<PageState, { route: "access" }> = { route: "access", providers, problem };
+  if (backend !== undefined) {
+    page.backend = backend;
   }
-  return { route: "access", backend, providers, problem };
+  if (sabia !== undefined) {
+    page.sabia = sabia;
+  }
+  return page;
 }
 
-function currentAccess(state: AppState): { backend?: SecretBackendView; providers: LoginProviderView[] } {
+function currentAccess(state: AppState): { backend?: SecretBackendView; providers: LoginProviderView[]; sabia?: SabiaView } {
   if (state.page.route !== "access") {
     return { providers: [] };
   }
-  if (state.page.backend === undefined) {
-    return { providers: state.page.providers };
+  const access: { backend?: SecretBackendView; providers: LoginProviderView[]; sabia?: SabiaView } = {
+    providers: state.page.providers,
+  };
+  if (state.page.backend !== undefined) {
+    access.backend = state.page.backend;
   }
-  return { backend: state.page.backend, providers: state.page.providers };
+  if (state.page.sabia !== undefined) {
+    access.sabia = state.page.sabia;
+  }
+  return access;
+}
+
+async function saveSabia(view: Window, state: AppState, form: HTMLFormElement, paint: () => void): Promise<void> {
+  const loadId = begin(state);
+  const current = currentAccess(state);
+  const saved = await putSabia(view, state, form, loadId, current, paint);
+  if (saved === undefined) {
+    return;
+  }
+  state.notice = "Template guardado. A chave de deploy não volta para esta tela.";
+  state.page = accessState(current.backend, current.providers, "", saved);
+  paint();
+}
+
+async function planSabia(view: Window, state: AppState, form: HTMLFormElement, paint: () => void): Promise<void> {
+  const loadId = begin(state);
+  const current = currentAccess(state);
+  const saved = await putSabia(view, state, form, loadId, current, paint);
+  if (saved === undefined) {
+    return;
+  }
+  const result = await apiRequest(view.location.origin, "/v1/admin/sabia/plan", state.token, "POST");
+  if (loadId !== state.loadId) {
+    return;
+  }
+  if (!result.ok) {
+    if (result.status === 401) {
+      loseSession(view, state, result.message, paint);
+      return;
+    }
+    state.page = accessState(current.backend, current.providers, result.message, saved);
+    paint();
+    return;
+  }
+  const plan = parseSabiaPlan(result.body);
+  if (!plan.ok) {
+    state.page = accessState(current.backend, current.providers, plan.message, saved);
+    paint();
+    return;
+  }
+  state.notice = "Plano do Sabiá recebido.";
+  state.page = accessState(current.backend, current.providers, "", withChanges(saved, plan.value));
+  paint();
+}
+
+async function applySabia(view: Window, state: AppState, form: HTMLFormElement, paint: () => void): Promise<void> {
+  const confirmations = selectedConfirmations(form);
+  const loadId = begin(state);
+  const current = currentAccess(state);
+  const saved = await putSabia(view, state, form, loadId, current, paint);
+  if (saved === undefined) {
+    return;
+  }
+  const result = await apiRequest(view.location.origin, "/v1/admin/sabia/apply", state.token, "POST", { confirmations });
+  if (loadId !== state.loadId) {
+    return;
+  }
+  if (!result.ok) {
+    if (result.status === 401) {
+      loseSession(view, state, result.message, paint);
+      return;
+    }
+    const changes = current.sabia?.changes;
+    const next = changes === undefined ? saved : withChanges(saved, changes);
+    state.page = accessState(current.backend, current.providers, result.message, next);
+    paint();
+    return;
+  }
+  const applied = parseSabiaApply(result.body);
+  if (!applied.ok) {
+    state.page = accessState(current.backend, current.providers, applied.message, saved);
+    paint();
+    return;
+  }
+  state.notice = `Sincronizado com o Sabiá. Aplicado: ${applied.value.applied}. Sem mudança: ${applied.value.unchanged}.`;
+  state.page = accessState(current.backend, current.providers, "", saved);
+  paint();
+}
+
+async function putSabia(
+  view: Window,
+  state: AppState,
+  form: HTMLFormElement,
+  loadId: number,
+  current: { backend?: SecretBackendView; providers: LoginProviderView[]; sabia?: SabiaView },
+  paint: () => void,
+): Promise<SabiaView | undefined> {
+  const data = readForm(form);
+  const body: Record<string, unknown> = {
+    origin: formText(data, "origin"),
+    application_id: formText(data, "application_id"),
+    template: {
+      name: formText(data, "name"),
+      subject: formText(data, "subject"),
+      html: formText(data, "html"),
+      text: formText(data, "text"),
+    },
+  };
+  const keyInput = inputNamed(form, "deploy_key");
+  const deployKey = keyInput === undefined ? "" : keyInput.value.trim();
+  if (deployKey !== "") {
+    body.deploy_key = deployKey;
+  }
+  const result = await apiRequest(view.location.origin, "/v1/admin/sabia", state.token, "PUT", body);
+  if (loadId !== state.loadId) {
+    return undefined;
+  }
+  if (!result.ok) {
+    if (result.status === 401) {
+      loseSession(view, state, result.message, paint);
+      return undefined;
+    }
+    state.page = accessState(current.backend, current.providers, result.message, current.sabia);
+    paint();
+    return undefined;
+  }
+  const parsed = parseSabia(result.body);
+  if (!parsed.ok) {
+    state.page = accessState(current.backend, current.providers, parsed.message, current.sabia);
+    paint();
+    return undefined;
+  }
+  return parsed.value;
+}
+
+function withChanges(sabia: SabiaView, changes: SabiaChangeView[]): SabiaView {
+  return {
+    origin: sabia.origin,
+    applicationId: sabia.applicationId,
+    deployKeyPresent: sabia.deployKeyPresent,
+    name: sabia.name,
+    subject: sabia.subject,
+    html: sabia.html,
+    text: sabia.text,
+    changes,
+  };
+}
+
+function selectedConfirmations(form: HTMLFormElement): string[] {
+  const ids: string[] = [];
+  const realm = form.ownerDocument.defaultView;
+  if (realm === null) {
+    return ids;
+  }
+  const nodes = form.querySelectorAll("[data-confirm]");
+  for (const node of nodes) {
+    if (node instanceof realm.HTMLInputElement && node.checked && node.value !== "") {
+      ids.push(node.value);
+    }
+  }
+  return ids;
 }
 
 function replaceProvider(providers: LoginProviderView[], next: LoginProviderView): LoginProviderView[] {
@@ -1108,7 +1419,7 @@ async function loadOverview(view: Window, state: AppState, paint: () => void): P
       return;
     }
     if (result.errorCode === "NETWORK") {
-      const cached = readCache(view);
+      const cached = readCache(view, personView(state));
       if (cached) {
         state.page = { route: "overview", overview: cached, fromCache: true, problem: "" };
         paint();
@@ -1125,7 +1436,11 @@ async function loadOverview(view: Window, state: AppState, paint: () => void): P
     paint();
     return;
   }
-  view.localStorage.setItem(overviewCacheKey, JSON.stringify({ saved_at: new Date().toISOString(), overview: result.body }));
+  view.localStorage.removeItem(overviewCacheKey);
+  view.localStorage.setItem(
+    overviewCacheStorageKey(personView(state)),
+    JSON.stringify({ saved_at: new Date().toISOString(), overview: result.body }),
+  );
   state.page = { route: "overview", overview: parsed.value, fromCache: false, problem: "" };
   paint();
 }
@@ -1380,11 +1695,12 @@ function loseSession(view: Window, state: AppState, message: string, paint: () =
   state.overlay = { type: "none" };
   state.notice = message;
   view.localStorage.removeItem(operatorTokenKey);
+  clearOverviewCache(view.localStorage);
   paint();
 }
 
-function readCache(view: Window): Overview | undefined {
-  const raw = view.localStorage.getItem(overviewCacheKey);
+function readCache(view: Window, person: boolean): Overview | undefined {
+  const raw = view.localStorage.getItem(overviewCacheStorageKey(person));
   if (raw === null || raw === "") {
     return undefined;
   }

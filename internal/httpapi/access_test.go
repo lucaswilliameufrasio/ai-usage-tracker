@@ -99,7 +99,7 @@ func TestUsageSurvivesClosedVault(t *testing.T) {
 	}).Handler()
 	operator := setupOperator(t, handler)
 	overview := callJSON(t, handler, http.MethodGet, "/v1/overview", operator, nil)
-	if overview.Code != http.StatusOK || !strings.Contains(overview.Body, "claude") {
+	if overview.Code != http.StatusOK || !strings.Contains(overview.Body, `"accounts":[]`) {
 		t.Fatalf("visão %d", overview.Code)
 	}
 	backend := callJSON(t, handler, http.MethodGet, "/v1/admin/secret-backend", operator, nil)

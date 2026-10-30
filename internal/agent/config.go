@@ -13,6 +13,7 @@ type File struct {
 	Spool      string `json:"spool"`
 	ClaudeFile string `json:"claude_file,omitempty"`
 	CodexDir   string `json:"codex_dir,omitempty"`
+	AutoUpdate bool   `json:"auto_update,omitempty"`
 }
 
 type Paths struct {

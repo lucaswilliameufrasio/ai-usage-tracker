@@ -245,7 +245,7 @@ func TestPublicLoginWhenVaultClosed(t *testing.T) {
 		t.Fatalf("início %d", started.Code)
 	}
 	overview := callJSON(t, handler, http.MethodGet, "/v1/overview", operator, nil)
-	if overview.Code != http.StatusOK || !strings.Contains(overview.Body, "claude") {
+	if overview.Code != http.StatusOK || !strings.Contains(overview.Body, `"accounts":[]`) {
 		t.Fatalf("visão %d", overview.Code)
 	}
 }

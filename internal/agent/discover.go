@@ -59,7 +59,7 @@ func describe(batch collect.Batch, provider string, codexDir string) string {
 		if sample.SourceObservedAt != nil {
 			when = sample.SourceObservedAt.UTC()
 		}
-		detail := "Limite encontrado, observado em " + when.Format("02/01/2006 15:04 UTC") + "."
+		detail := "Limite encontrado, observado em " + when.In(time.Local).Format("02/01/2006 15:04 MST") + "."
 		if provider == contract.ProviderCodex && newerSessionWithoutLimits(codexDir, when) {
 			detail += " Sessões mais novas não trouxeram rate_limits."
 		}

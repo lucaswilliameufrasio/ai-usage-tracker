@@ -7,7 +7,6 @@ import (
 
 	"ai-usage-tracker/internal/access"
 	"ai-usage-tracker/internal/apierr"
-	"ai-usage-tracker/internal/contract"
 	"ai-usage-tracker/internal/login"
 	"ai-usage-tracker/internal/store"
 	"ai-usage-tracker/internal/token"
@@ -159,32 +158,11 @@ func (s *Server) accountRevoke(w http.ResponseWriter, r *http.Request, session s
 }
 
 func (s *Server) accountOverview(w http.ResponseWriter, _ *http.Request, session store.PersonSession) {
-	s.writeOverview(w, session.AccountID)
+	s.writePersonOverview(w, session.AccountID)
 }
 
 func (s *Server) accountSamples(w http.ResponseWriter, r *http.Request, session store.PersonSession) {
 	s.writeSamples(w, r, session.AccountID)
-}
-
-func (s *Server) latestSample(accountID string, provider string) (store.SampleRecord, error) {
-	if accountID == "" {
-		return s.Store.LatestSample(provider)
-	}
-	return s.Store.LatestSampleFor(accountID, provider)
-}
-
-func (s *Server) latestReport(accountID string, provider string) (store.ReportRecord, error) {
-	if accountID == "" {
-		return s.Store.LatestReport(provider)
-	}
-	return s.Store.LatestReportFor(accountID, provider)
-}
-
-func (s *Server) recentSamples(accountID string, provider string, limit int) ([]contract.Sample, error) {
-	if accountID == "" {
-		return s.Store.RecentSamples(provider, limit)
-	}
-	return s.Store.RecentSamplesFor(accountID, provider, limit)
 }
 
 func (s *Server) listedSamples(accountID string, provider string, cursor time.Time, cursorID string, limit int) ([]store.SampleRecord, error) {

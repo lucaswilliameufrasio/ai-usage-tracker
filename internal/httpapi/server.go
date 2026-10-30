@@ -46,6 +46,7 @@ type Server struct {
 	Logger         *slog.Logger
 	Vault          vault.Box
 	Login          *login.Flow
+	SabiaHTTP      *http.Client
 }
 
 func (s *Server) Handler() http.Handler {
@@ -78,6 +79,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/admin/login-providers", s.operator(s.listLoginProviders))
 	mux.HandleFunc("PUT /v1/admin/login-providers/{provider}", s.operator(s.putLoginProvider))
 	mux.HandleFunc("DELETE /v1/admin/login-providers/{provider}", s.operator(s.deleteLoginProvider))
+	mux.HandleFunc("GET /v1/admin/sabia", s.operator(s.getSabia))
+	mux.HandleFunc("PUT /v1/admin/sabia", s.operator(s.putSabia))
+	mux.HandleFunc("POST /v1/admin/sabia/plan", s.operator(s.postSabiaPlan))
+	mux.HandleFunc("POST /v1/admin/sabia/apply", s.operator(s.postSabiaApply))
 	mux.HandleFunc("GET /v1/login/providers", s.publicLogins)
 	mux.HandleFunc("GET /v1/login/{provider}/start", s.loginStart)
 	mux.HandleFunc("GET /v1/login/{provider}/callback", s.loginCallback)
@@ -341,43 +346,103 @@ func (s *Server) writeSamples(w http.ResponseWriter, r *http.Request, accountID 
 }
 
 func (s *Server) overview(w http.ResponseWriter, _ *http.Request) {
-	s.writeOverview(w, "")
+	s.writeOperatorOverview(w)
 }
 
-// accountID vazio lê a instalação inteira. A pessoa passa o id da própria conta.
-func (s *Server) writeOverview(w http.ResponseWriter, accountID string) {
+func (s *Server) writeOperatorOverview(w http.ResponseWriter) {
 	settings, err := s.Store.Settings()
 	if err != nil {
 		apierr.Write(w, err)
 		return
 	}
 	now := s.Now()
-	providers := make([]map[string]any, 0, 2)
-	for _, provider := range []string{contract.ProviderClaude, contract.ProviderCodex} {
-		var sample *contract.Sample
-		record, err := s.latestSample(accountID, provider)
-		if err == nil {
-			copied := record.Sample
-			sample = &copied
-		} else if !errors.Is(err, store.ErrNotFound) {
-			apierr.Write(w, err)
-			return
-		}
-		var report *contract.SourceReport
-		reportRecord, err := s.latestReport(accountID, provider)
-		if err == nil {
-			copied := reportRecord.Report
-			report = &copied
-		} else if !errors.Is(err, store.ErrNotFound) {
-			apierr.Write(w, err)
-			return
-		}
-		history, err := s.recentSamples(accountID, provider, 8)
+	accounts, err := s.Store.AccountsWithDevices()
+	if err != nil {
+		apierr.Write(w, err)
+		return
+	}
+	groups := make([]map[string]any, 0)
+	for _, account := range accounts {
+		cards, err := s.providerCards(account.ID, now, settings.StaleAfter)
 		if err != nil {
 			apierr.Write(w, err)
 			return
 		}
-		card := freshness.Build(provider, sample, report, history, now, settings.StaleAfter)
+		groups = append(groups, map[string]any{
+			"id":        account.ID,
+			"label":     accountLabel(account),
+			"login":     account.Provider,
+			"providers": cards,
+		})
+	}
+	orphan, err := s.Store.HasOrphanDevices()
+	if err != nil {
+		apierr.Write(w, err)
+		return
+	}
+	if orphan {
+		cards, err := s.providerCards("", now, settings.StaleAfter)
+		if err != nil {
+			apierr.Write(w, err)
+			return
+		}
+		groups = append(groups, map[string]any{
+			"id":        "",
+			"label":     "Sem conta",
+			"login":     "",
+			"providers": cards,
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"generated_at":        now.UTC(),
+		"stale_after_seconds": int(settings.StaleAfter / time.Second),
+		"accounts":            groups,
+	})
+}
+
+func (s *Server) writePersonOverview(w http.ResponseWriter, accountID string) {
+	settings, err := s.Store.Settings()
+	if err != nil {
+		apierr.Write(w, err)
+		return
+	}
+	now := s.Now()
+	providers, err := s.providerCards(accountID, now, settings.StaleAfter)
+	if err != nil {
+		apierr.Write(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"generated_at":        now.UTC(),
+		"stale_after_seconds": int(settings.StaleAfter / time.Second),
+		"providers":           providers,
+	})
+}
+
+func (s *Server) providerCards(accountID string, now time.Time, stale time.Duration) ([]map[string]any, error) {
+	providers := make([]map[string]any, 0, 2)
+	for _, provider := range []string{contract.ProviderClaude, contract.ProviderCodex} {
+		var sample *contract.Sample
+		record, err := s.Store.LatestSampleFor(accountID, provider)
+		if err == nil {
+			copied := record.Sample
+			sample = &copied
+		} else if !errors.Is(err, store.ErrNotFound) {
+			return nil, err
+		}
+		var report *contract.SourceReport
+		reportRecord, err := s.Store.LatestReportFor(accountID, provider)
+		if err == nil {
+			copied := reportRecord.Report
+			report = &copied
+		} else if !errors.Is(err, store.ErrNotFound) {
+			return nil, err
+		}
+		history, err := s.Store.RecentSamplesFor(accountID, provider, 8)
+		if err != nil {
+			return nil, err
+		}
+		card := freshness.Build(provider, sample, report, history, now, stale)
 		item := map[string]any{
 			"provider":  card.Provider,
 			"freshness": card.Freshness,
@@ -396,11 +461,26 @@ func (s *Server) writeOverview(w http.ResponseWriter, accountID string) {
 		}
 		providers = append(providers, item)
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"generated_at":        now.UTC(),
-		"stale_after_seconds": int(settings.StaleAfter / time.Second),
-		"providers":           providers,
-	})
+	return providers, nil
+}
+
+func accountLabel(account store.Account) string {
+	contact := strings.TrimSpace(account.Contact)
+	if contact != "" {
+		return contact
+	}
+	switch account.Provider {
+	case "github":
+		return "GitHub"
+	case "gitea":
+		return "Gitea"
+	case "google":
+		return "Google"
+	case "apple":
+		return "Apple"
+	default:
+		return "Conta"
+	}
 }
 
 func (s *Server) getSettings(w http.ResponseWriter, _ *http.Request) {

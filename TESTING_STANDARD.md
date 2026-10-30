@@ -40,4 +40,4 @@ O script sobe o `tracker` em porta local, com diretório temporário, e percorre
 
 ## Fora do gate
 
-Não há suíte de integração com rede externa, teste de carga, limiar de cobertura nem verificação de duas semanas no celular.
+Não há suíte de integração com rede externa, teste de carga, limiar de cobertura nem verificação de duas semanas no celular. O teste em `internal/release` publica os arquivos num servidor local. Ele não chama o GitHub. `go build ./cmd/agent` não precisa do diretório `../sqlite-replication/go`.

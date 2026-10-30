@@ -103,7 +103,7 @@ func TestPersonalJourney(t *testing.T) {
 		t.Fatalf("histórico duplicou: %d", count)
 	}
 	overview := getJSON(t, server.URL+"/v1/overview", operator)
-	providers := overview["providers"].([]any)
+	providers := overviewProviders(t, overview)
 	seen := map[string]string{}
 	for _, item := range providers {
 		card := item.(map[string]any)
@@ -126,7 +126,7 @@ func TestPersonalJourney(t *testing.T) {
 
 	clock = clock.Add(2 * time.Hour)
 	stale := getJSON(t, server.URL+"/v1/overview", operator)
-	for _, item := range stale["providers"].([]any) {
+	for _, item := range overviewProviders(t, stale) {
 		card := item.(map[string]any)
 		if card["freshness"] != "stale" {
 			t.Fatalf("esperado desatualizado, veio %v", card["freshness"])
@@ -151,7 +151,7 @@ func TestPersonalJourney(t *testing.T) {
 		t.Fatal(err)
 	}
 	unavailable := getJSON(t, server.URL+"/v1/overview", operator)
-	for _, item := range unavailable["providers"].([]any) {
+	for _, item := range overviewProviders(t, unavailable) {
 		card := item.(map[string]any)
 		if card["provider"] == "codex" && card["freshness"] != "unavailable" {
 			t.Fatalf("codex %#v", card)
@@ -394,6 +394,26 @@ func writeCodex(t *testing.T, path string, observed time.Time, used int) {
 	if err := os.WriteFile(path, append(raw, '\n'), 0o600); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func overviewProviders(t *testing.T, overview map[string]any) []any {
+	t.Helper()
+	if accounts, ok := overview["accounts"].([]any); ok && len(accounts) > 0 {
+		group, ok := accounts[0].(map[string]any)
+		if !ok {
+			t.Fatal("grupo ilegível")
+		}
+		providers, ok := group["providers"].([]any)
+		if !ok {
+			t.Fatal("grupo sem provedores")
+		}
+		return providers
+	}
+	providers, ok := overview["providers"].([]any)
+	if !ok {
+		t.Fatal("visão sem provedores")
+	}
+	return providers
 }
 
 func getJSON(t *testing.T, url string, operator string) map[string]any {

@@ -109,12 +109,17 @@ func runWizard(opts wizardOptions) (agent.File, string, string, error) {
 			fmt.Fprintln(opts.out, "Informe o Claude, o Codex, ou os dois.")
 			continue
 		}
+		updateOn, err := askUpdate(reader, opts, current.AutoUpdate)
+		if err != nil {
+			return agent.File{}, "", "", err
+		}
 		file := agent.File{
 			API:        api,
 			TokenFile:  opts.tokenPath,
 			Spool:      opts.spoolPath,
 			ClaudeFile: claude,
 			CodexDir:   codex,
+			AutoUpdate: updateOn,
 		}
 		ok, err := confirm(reader, opts, file, code != "")
 		if err != nil {
@@ -133,12 +138,17 @@ func confirm(reader *bufio.Reader, opts wizardOptions, file agent.File, enrollin
 	if enrolling {
 		tokenLine = "Um código novo vai enrolar este aparelho."
 	}
-	body := fmt.Sprintf("Servidor\n%s\n\nClaude\n%s\n%s\n\nCodex\n%s\n%s\n\n%s\nO próximo run sem flags envia direto.",
+	updateLine := "Atualização automática desligada."
+	if file.AutoUpdate {
+		updateLine = "Atualização automática ligada."
+	}
+	body := fmt.Sprintf("Servidor\n%s\n\nClaude\n%s\n%s\n\nCodex\n%s\n%s\n\n%s\n\n%s\nO próximo run sem flags envia direto.",
 		file.API,
 		emptyPath(file.ClaudeFile),
 		agent.DescribeClaude(file.ClaudeFile, opts.now),
 		emptyPath(file.CodexDir),
 		agent.DescribeCodex(file.CodexDir, opts.now),
+		updateLine,
 		tokenLine,
 	)
 	paint(opts.out, opts.interactive, "Confirmar", body, "Enter grava e envia. n refaz. q cancela.")
@@ -153,6 +163,33 @@ func confirm(reader *bufio.Reader, opts wizardOptions, file agent.File, enrollin
 		return true, nil
 	}
 	return false, nil
+}
+
+func askUpdate(reader *bufio.Reader, opts wizardOptions, current bool) (bool, error) {
+	state := "desligada"
+	if current {
+		state = "ligada"
+	}
+	for {
+		paint(opts.out, opts.interactive, "Atualização", "Cada passagem pode conferir a release estável antes de enviar. Agora está "+state+".", "Enter mantém. s liga. n desliga. q cancela.")
+		line, err := readLine(reader)
+		if err != nil {
+			return false, err
+		}
+		if line == "q" {
+			return false, errWizardCancelled
+		}
+		if line == "" {
+			return current, nil
+		}
+		if line == "s" {
+			return true, nil
+		}
+		if line == "n" {
+			return false, nil
+		}
+		fmt.Fprintln(opts.out, "Responda s, n ou Enter.")
+	}
 }
 
 func ask(reader *bufio.Reader, opts wizardOptions, title string, body string, current string, allowEmpty bool, allowClear bool) (string, error) {

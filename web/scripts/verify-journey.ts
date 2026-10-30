@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import net from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -80,7 +80,7 @@ async function exercise(origin: string, work: string, agentBin: string): Promise
   const app = await import("../src/app.ts");
   app.start(root);
   click(root, "[data-action='create-setup']");
-  await waitFor(root, (text) => text.includes("Sem dados") && text.includes("Claude") && text.includes("Codex"), "visão vazia");
+  await waitFor(root, (text) => text.includes("Contas") && text.includes("Nenhuma conta com dispositivo."), "visão vazia");
   click(root, "[data-action='close-overlay']");
   await openScreen(view, root, "/dispositivos", "devices");
   click(root, "[data-action='enroll']");
@@ -92,13 +92,17 @@ async function exercise(origin: string, work: string, agentBin: string): Promise
   }
   const tokenFile = path.join(work, "device.token");
   const spool = path.join(work, "spool.json");
+  const isolatedPath = path.join(work, "bin-vazio");
+  await mkdir(isolatedPath);
+  // PATH vazio: o comando local `codex` desta máquina não substitui a fixture.
+  const fixtureEnv = { ...process.env, PATH: isolatedPath };
   await runAgent(repoRoot, [
     agentBin, "enroll",
     "--api", origin,
     "--code", code,
     "--name", "notebook",
     "--out", tokenFile,
-  ], 0);
+  ], 0, fixtureEnv);
   await runAgent(repoRoot, [
     agentBin, "run",
     "--api", origin,
@@ -106,7 +110,7 @@ async function exercise(origin: string, work: string, agentBin: string): Promise
     "--spool", spool,
     "--claude-file", path.join(repoRoot, "fixtures/synthetic/claude-cache.json"),
     "--codex-dir", path.join(repoRoot, "fixtures/synthetic/codex"),
-  ], 0);
+  ], 0, fixtureEnv);
   click(root, "[data-action='close-overlay']");
   await openScreen(view, root, "/", "overview");
   await waitFor(root, (text) => text.includes("86%") && text.includes("25%"), "percentuais na visão");
@@ -115,10 +119,7 @@ async function exercise(origin: string, work: string, agentBin: string): Promise
     throw new Error("token do operador ausente no navegador");
   }
   const overview = await readJson(origin, "/v1/overview", operator);
-  const providers = overviewRecord(overview, "providers");
-  if (!Array.isArray(providers)) {
-    throw new Error("visão sem provedores");
-  }
+  const providers = overviewProviders(overview);
   for (const item of providers) {
     if (!isRecord(item)) {
       continue;
@@ -159,8 +160,8 @@ async function exercise(origin: string, work: string, agentBin: string): Promise
     "--spool", spool,
     "--claude-file", path.join(repoRoot, "fixtures/synthetic/claude-cache.json"),
     "--codex-dir", path.join(repoRoot, "fixtures/synthetic/codex"),
-  ], 3);
-  const cached = view.localStorage.getItem("tracker.overview.cache");
+  ], 3, fixtureEnv);
+  const cached = view.localStorage.getItem("tracker.overview.cache.operator");
   if (cached === null || cached === "") {
     throw new Error("a visão não foi guardada para uso offline");
   }
@@ -246,11 +247,23 @@ async function readJson(origin: string, pathName: string, token: string): Promis
   return await response.json();
 }
 
-function overviewRecord(value: unknown, key: string): unknown {
-  if (typeof value !== "object" || value === null) {
-    return undefined;
+function overviewProviders(value: unknown): unknown[] {
+  if (!isRecord(value)) {
+    throw new Error("visão sem provedores");
   }
-  return Reflect.get(value, key);
+  const accounts = value["accounts"];
+  if (Array.isArray(accounts) && accounts.length > 0) {
+    const first = accounts[0];
+    if (!isRecord(first) || !Array.isArray(first["providers"])) {
+      throw new Error("visão sem provedores");
+    }
+    return first["providers"];
+  }
+  const providers = value["providers"];
+  if (!Array.isArray(providers)) {
+    throw new Error("visão sem provedores");
+  }
+  return providers;
 }
 
 function stringField(record: Record<string, unknown>, key: string): string | undefined {
@@ -261,17 +274,23 @@ function stringField(record: Record<string, unknown>, key: string): string | und
   return value;
 }
 
-async function runAgent(cwd: string, args: string[], expected: number): Promise<void> {
+async function runAgent(cwd: string, args: string[], expected: number, env?: NodeJS.ProcessEnv): Promise<void> {
   const executable = args[0] ?? "go";
-  const result = await command(executable, args.slice(1), 120000, cwd);
+  const result = await command(executable, args.slice(1), 120000, cwd, env);
   if (result.code !== expected) {
     throw new Error(`agente saiu ${result.code}, esperado ${expected}: ${redact(result.output)}`);
   }
 }
 
-function command(bin: string, args: string[], timeoutMs: number, cwd?: string): Promise<{ code: number; output: string }> {
+function command(
+  bin: string,
+  args: string[],
+  timeoutMs: number,
+  cwd?: string,
+  env?: NodeJS.ProcessEnv,
+): Promise<{ code: number; output: string }> {
   return new Promise((resolve, reject) => {
-    const child = spawn(bin, args, { cwd, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(bin, args, { cwd, env, stdio: ["ignore", "pipe", "pipe"] });
     let output = "";
     child.stdout.on("data", (chunk: Buffer) => {
       output += chunk.toString("utf8");

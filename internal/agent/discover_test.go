@@ -47,10 +47,12 @@ func TestSuggestHidesUsageAndKeepsTheLastCodexLimit(t *testing.T) {
 		t.Fatal("codex")
 	}
 	joined := claudePlace.Detail + "\n" + codexPlace.Detail
-	if !strings.Contains(claudePlace.Detail, "29/10/2026 15:00 UTC") {
+	claudeWhen := time.Date(2026, 10, 29, 15, 0, 0, 0, time.UTC).In(time.Local).Format("02/01/2006 15:04 MST")
+	codexWhen := time.Date(2026, 9, 20, 15, 0, 0, 0, time.UTC).In(time.Local).Format("02/01/2006 15:04 MST")
+	if !strings.Contains(claudePlace.Detail, claudeWhen) {
 		t.Fatal(claudePlace.Detail)
 	}
-	if !strings.Contains(codexPlace.Detail, "20/09/2026 15:00 UTC") || !strings.Contains(codexPlace.Detail, "Sessões mais novas não trouxeram rate_limits.") {
+	if !strings.Contains(codexPlace.Detail, codexWhen) || !strings.Contains(codexPlace.Detail, "Sessões mais novas não trouxeram rate_limits.") {
 		t.Fatal(codexPlace.Detail)
 	}
 	for _, hidden := range []string{"41", "25", "CANARY_TOKEN", "secret-project"} {

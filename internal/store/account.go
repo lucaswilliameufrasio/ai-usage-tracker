@@ -154,6 +154,45 @@ func (s *Store) RevokeSession(tokenHash string, now time.Time) error {
 	return err
 }
 
+func (s *Store) AccountsWithDevices() ([]Account, error) {
+	rows, err := s.db.Query(
+		`SELECT id, provider, subject, contact, created_at FROM accounts
+		 WHERE id IN (SELECT account_id FROM devices WHERE account_id <> '')
+		 ORDER BY created_at ASC, id ASC`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var accounts []Account
+	for rows.Next() {
+		account, err := scanAccount(rows)
+		if err != nil {
+			return nil, err
+		}
+		accounts = append(accounts, account)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if accounts == nil {
+		accounts = []Account{}
+	}
+	return accounts, nil
+}
+
+func (s *Store) HasOrphanDevices() (bool, error) {
+	var found int
+	err := s.db.QueryRow(`SELECT 1 FROM devices WHERE account_id = '' LIMIT 1`).Scan(&found)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 func (s *Store) ListDevicesFor(accountID string) ([]Device, error) {
 	rows, err := s.db.Query(`SELECT id, name, token_hash, created_at, revoked_at FROM devices WHERE account_id = ? ORDER BY created_at ASC, id ASC`, accountID)
 	if err != nil {

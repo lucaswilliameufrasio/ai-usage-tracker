@@ -14,6 +14,8 @@ import {
   parseSettings,
   parseRoute,
   screenPath,
+  formatInstant,
+  parseSabia,
   projectionCopy,
   readingCopy,
   staffTone,
@@ -106,17 +108,43 @@ describe("acesso", () => {
   });
 });
 
+describe("fuso", () => {
+  it("mostra o fuso pedido", () => {
+    const local = formatInstant("2026-10-29T15:00:00Z", "America/Sao_Paulo");
+    assert.equal(local.startsWith("29/10/2026 12:00"), true);
+    assert.equal(local.includes("UTC"), false);
+    const parsed = parseSabia({
+      origin: "https://sabia.exemplo",
+      deploy_key_present: true,
+      deploy_key: "sb_deploy_nao_mostrar",
+      template: {
+        name: "Alerta de uso",
+        subject: "Uso",
+        html: "<p>oi</p>",
+        text: "oi",
+      },
+    });
+    assert.equal(parsed.ok, true);
+    if (!parsed.ok) {
+      return;
+    }
+    assert.equal(JSON.stringify(parsed.value).includes("sb_deploy_nao_mostrar"), false);
+    assert.equal(parsed.value.deployKeyPresent, true);
+    assert.equal(parsed.value.applicationId, "");
+  });
+});
+
 describe("frescor", () => {
   it("separa atual, desatualizado, indisponível e vazio", () => {
     const current = readingCopy("current", "2026-10-29T15:00:00Z", undefined, false);
     assert.equal(current.headline, "Atual");
     assert.equal(current.showAsCurrent, true);
-    assert.equal(current.detail.includes("29/10/2026 15:00 UTC"), true);
+    assert.equal(current.detail.includes(formatInstant("2026-10-29T15:00:00Z")), true);
 
     const stale = readingCopy("stale", "2026-10-29T12:00:00Z", undefined, false);
     assert.equal(stale.headline, "Desatualizado");
     assert.equal(stale.showAsCurrent, false);
-    assert.equal(stale.detail.includes("Coletado em 29/10/2026 12:00 UTC"), true);
+    assert.equal(stale.detail.includes(`Coletado em ${formatInstant("2026-10-29T12:00:00Z")}`), true);
 
     const unavailable = readingCopy("unavailable", undefined, "LIMITS_ABSENT", false);
     assert.equal(unavailable.headline, "Provedor indisponível");
@@ -254,6 +282,48 @@ describe("visão geral", () => {
     assert.equal(settings.value.timezone, "");
     assert.equal(settings.value.quietStart, "");
     assert.equal(settings.value.quietEnd, "");
+  });
+
+  it("separa as contas e não guarda o identificador do login", () => {
+    const parsed = parseOverview({
+      generated_at: "2026-10-30T12:00:00Z",
+      stale_after_seconds: 1800,
+      accounts: [
+        {
+          id: "acct_ana",
+          label: " ana@exemplo.test ",
+          login: "github",
+          subject: "subj_canario",
+          providers: [
+            {
+              provider: "codex",
+              freshness: "current",
+              last_sample: {
+                plan: "pro",
+                windows: [
+                  { name: "five_hour", used: 11, limit: 100, unit: "percent", resets_at: "2026-10-30T17:00:00Z" },
+                ],
+              },
+            },
+          ],
+        },
+        { id: "acct_ruim", label: "   " },
+      ],
+    });
+    assert.equal(parsed.ok, true);
+    if (!parsed.ok) {
+      return;
+    }
+    assert.equal(parsed.value.providers.length, 0);
+    assert.equal(parsed.value.accounts?.length, 1);
+    const ana = parsed.value.accounts?.[0];
+    assert.equal(ana?.label, "ana@exemplo.test");
+    assert.equal(ana?.login, "github");
+    assert.equal(ana?.providers[1]?.windows[0]?.used, 11);
+    assert.equal(ana?.providers[0]?.freshness, "empty");
+    assert.equal(JSON.stringify(parsed.value).includes("subj_canario"), false);
+    const empty = parseOverview({});
+    assert.equal(empty.ok, false);
   });
 });
 

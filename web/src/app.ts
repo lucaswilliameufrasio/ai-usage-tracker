@@ -29,7 +29,6 @@ import {
   screenPath,
   parseSettings,
   parseSubscriptions,
-  primaryWindow,
   projectionCopy,
   providerLabel,
   readingCopy,
@@ -363,10 +362,10 @@ function overviewView(doc: Document, view: Window, state: AppState, paint: () =>
   const wrap = doc.createElement("section");
   if (grouped) {
     wrap.append(el(doc, "h1", "", "Contas"));
-    wrap.append(el(doc, "p", "lede", "Cada conta mostra as próprias medições. A linha de latão marca 80%."));
+    wrap.append(el(doc, "p", "lede", "Cada conta mostra as próprias medições. A marca de latão é 80%."));
   } else {
-    wrap.append(el(doc, "h1", "", "Duas medições"));
-    wrap.append(el(doc, "p", "lede", "Cada régua sobe com o percentual usado. A linha de latão marca 80%."));
+    wrap.append(el(doc, "h1", "", "Medições"));
+    wrap.append(el(doc, "p", "lede", "Cada janela tem a própria régua. A marca de latão é 80%."));
   }
   const refresh = button(doc, "Atualizar", "");
   refresh.dataset.action = "refresh";
@@ -427,18 +426,6 @@ function providerCard(doc: Document, card: ProviderCard, fromCache: boolean): HT
   article.className = "provider";
   article.dataset.provider = card.provider;
   const copy = readingCopy(card.freshness, card.observedAt, card.reasonCode, fromCache);
-  const primary = primaryWindow(card.windows);
-  const used = primary === undefined ? 0 : primary.used;
-  const staff = doc.createElement("div");
-  staff.className = "staff";
-  staff.dataset.tone = primary === undefined ? "calm" : staffTone(used);
-  staff.style.setProperty("--level", String(staffLevel(used)));
-  const water = doc.createElement("div");
-  water.className = "staff-water";
-  const mark = doc.createElement("div");
-  mark.className = "staff-mark";
-  mark.title = "Limiar de 80%";
-  staff.append(water, mark);
   const text = doc.createElement("div");
   text.className = "provider-copy";
   text.append(el(doc, "h2", "", providerLabel(card.provider)));
@@ -446,21 +433,26 @@ function providerCard(doc: Document, card: ProviderCard, fromCache: boolean): HT
   headline.dataset.headline = copy.headline;
   text.append(headline);
   text.append(el(doc, "p", "", copy.detail));
-  if (primary !== undefined) {
-    const figure = el(doc, "p", "figure", `${formatUsed(used)}%`);
-    figure.dataset.used = formatUsed(used);
-    text.append(figure);
-  }
   if (card.plan !== undefined && card.plan !== "") {
     text.append(el(doc, "p", "meta", `Plano ${card.plan}.`));
   }
-  const list = doc.createElement("ul");
-  for (const item of card.windows) {
-    const row = doc.createElement("li");
-    row.textContent = `${windowLabel(item.name)}: ${formatUsed(item.used)}% · reinicia ${formatInstant(item.resetsAt)}`;
-    list.append(row);
-  }
-  if (list.childElementCount > 0) {
+  if (card.windows.length === 0) {
+    text.append(gauge(doc, 0));
+  } else {
+    const list = doc.createElement("ul");
+    list.className = "windows";
+    for (const item of card.windows) {
+      const row = doc.createElement("li");
+      row.className = "window";
+      row.dataset.window = item.name;
+      row.append(el(doc, "p", "", windowLabel(item.name)));
+      const figure = el(doc, "p", "figure", `${formatUsed(item.used)}%`);
+      figure.dataset.used = formatUsed(item.used);
+      row.append(figure);
+      row.append(el(doc, "p", "meta", `Reinicia ${formatInstant(item.resetsAt)}`));
+      row.append(gauge(doc, item.used));
+      list.append(row);
+    }
     text.append(list);
   }
   if (card.freshness === "unavailable" && card.windows.length > 0 && !fromCache) {
@@ -469,8 +461,22 @@ function providerCard(doc: Document, card: ProviderCard, fromCache: boolean): HT
   if (card.projection !== undefined && (card.freshness === "current" || card.freshness === "stale" || fromCache)) {
     text.append(el(doc, "p", "projection", projectionCopy(card.projection)));
   }
-  article.append(staff, text);
+  article.append(text);
   return article;
+}
+
+function gauge(doc: Document, used: number): HTMLElement {
+  const staff = doc.createElement("div");
+  staff.className = "staff";
+  staff.dataset.tone = staffTone(used);
+  staff.style.setProperty("--level", String(staffLevel(used)));
+  const water = doc.createElement("div");
+  water.className = "staff-water";
+  const mark = doc.createElement("div");
+  mark.className = "staff-mark";
+  mark.title = "Limiar de 80%";
+  staff.append(water, mark);
+  return staff;
 }
 
 function historyView(doc: Document, view: Window, state: AppState, paint: () => void): HTMLElement {

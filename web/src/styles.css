@@ -141,7 +141,7 @@ h2 { margin: 0; font-size: 1.45rem; }
 
 .board {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
   gap: 1.5rem 2rem;
   margin-top: 1.5rem;
 }
@@ -159,15 +159,27 @@ h2 { margin: 0; font-size: 1.45rem; }
 
 .provider {
   display: grid;
-  grid-template-columns: 7.5rem 1fr;
-  gap: 1rem;
-  align-items: stretch;
+  gap: 0.75rem;
+  align-content: start;
   padding-top: 0.4rem;
+}
+
+.windows {
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 1rem;
+}
+
+.window {
+  display: grid;
+  gap: 0.2rem;
 }
 
 .staff {
   position: relative;
-  height: 16rem;
+  height: 0.65rem;
   border: 1px solid var(--brass);
   background: #0c1916;
   overflow: hidden;
@@ -176,11 +188,11 @@ h2 { margin: 0; font-size: 1.45rem; }
 .staff-water {
   position: absolute;
   left: 0;
-  right: 0;
+  top: 0;
   bottom: 0;
-  height: calc(var(--level) * 1%);
+  width: calc(var(--level) * 1%);
   background: var(--water);
-  transition: height 240ms linear;
+  transition: width 240ms linear;
 }
 
 .staff[data-tone="watch"] .staff-water { background: var(--watch); }
@@ -188,10 +200,10 @@ h2 { margin: 0; font-size: 1.45rem; }
 
 .staff-mark {
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 80%;
-  border-top: 1px dashed var(--brass);
+  top: 0;
+  bottom: 0;
+  left: 80%;
+  border-left: 1px dashed var(--brass);
 }
 
 .provider-copy { display: grid; align-content: start; gap: 0.35rem; }
@@ -199,15 +211,15 @@ h2 { margin: 0; font-size: 1.45rem; }
 .headline { margin: 0; color: var(--brass); }
 
 .figure {
-  margin: 0.2rem 0;
-  font-size: 3.2rem;
+  margin: 0;
+  font-size: 2.4rem;
   line-height: 0.9;
 }
 
 .history,
 .devices,
 .deliveries,
-.provider-copy ul {
+.provider-copy ul:not(.windows) {
   padding-left: 1.1rem;
 }
 
@@ -330,9 +342,6 @@ textarea {
 .gate-title { font-size: clamp(2.4rem, 6vw, 4.4rem); }
 
 @media (max-width: 720px) {
-  .board,
-  .provider { grid-template-columns: 1fr; }
-  .staff { height: 9rem; }
   .topbar button { margin-left: auto; }
 }
 

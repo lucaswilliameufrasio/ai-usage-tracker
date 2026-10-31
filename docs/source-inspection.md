@@ -42,7 +42,7 @@ Inspeção de nomes e da documentação local. Os arquivos de autenticação, co
 | Cliente | O que apareceu | Serve como limite e reset? |
 | --- | --- | --- |
 | OpenCode | Binário local e arquivos de conta, autenticação e banco. Nenhum nome de arquivo de uso, limite ou reset. | Não. Sem contrato local de janela. |
-| Antigravity | Binário `agy` e um arquivo de token OAuth. Nenhum nome de arquivo de uso, limite ou reset. | Não. O token não foi lido. |
+| Antigravity | Binário `agy` 1.4.7. O comando `agy -p /usage --output-format json` devolve `command.data.groups[].buckets` com `id`, `window`, `remaining_fraction` e `reset_time`. A fração é o que resta, de 0 a 1. Um plano pode trazer só a semana. | Sim, pelo comando. O token não é lido. ADR 0022. |
 | Grok Build | Binário `grok`. O guia local de monitoramento descreve OpenTelemetry externo, desligado por padrão, com contagem de tokens. Pode anexar e-mail. Não é um arquivo de percentual e reset. | Não. Não ligar o exportador e não ler a sessão. |
 
-Estes três não entram no coletor até existir um contrato local de janela, no mesmo espírito de Claude e Codex, sem credencial e sem prompt.
+O Antigravity entra pelo comando do próprio `agy`, no mesmo espírito do Codex: o CLI guarda o login. OpenCode e Grok Build continuam fora. `opencode stats` e `grok usage` trazem tokens e custo de sessão, não a janela do plano. A janela que as outras barras mostram desses dois sai de ler o arquivo de login e chamar o provedor. Esse caminho não foi adotado.

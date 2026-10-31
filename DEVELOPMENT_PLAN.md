@@ -1,6 +1,6 @@
 # Plano de desenvolvimento — Rastreador de uso de IA
 
-**Status:** MVP pessoal validado em 2026-10-30. Conta, sessão e retorno do login estão no código, em `docs/adr/0008-sessao-e-retorno-do-login.md`. O template do Sabiá se edita em Acesso (ADR 0019). A atualização do agente é opt-in (ADR 0020). As datas do PWA usam o fuso do dispositivo (ADR 0021). E-mail BYOK da instalação e os cofres externos estão decididos e sem código. Termos públicos e cobrança continuam fora. A repaginação de UI, UX e DX continua aberta; o fuso é o primeiro item dela.
+**Status:** MVP pessoal validado em 2026-10-30. Conta, sessão e retorno do login estão no código, em `docs/adr/0008-sessao-e-retorno-do-login.md`. O template do Sabiá se edita em Acesso (ADR 0019). A atualização do agente é opt-in (ADR 0020). As datas do PWA usam o fuso do dispositivo (ADR 0021). O Antigravity, quando ligado no setup, é lido pelo comando `agy` (ADR 0022). A pessoa confirmou esse coletor nesta máquina. Cada janela do cartão tem a própria régua (ADR 0023). OpenCode e Grok continuam sem coletor. E-mail BYOK da instalação e os cofres externos estão decididos e sem código. Termos públicos e cobrança continuam fora. A repaginação do restante da interface continua aberta; o fuso e a régua por janela são os dois primeiros itens dela.
 
 **Nome do repositório:** funcional/provisório.
 
@@ -151,7 +151,7 @@ Não extrair um serviço de notificações: a decisão de alertar e os adapters 
 - Qualificação concreta de MillionSend, Cloudflare Email e Amazon SES. O e-mail BYOK é da instalação e ainda não tem código.
 - O estado final de entrega quando uma mensagem sair pelo Sabiá. O template já sincroniza por plan/apply (ADR 0019) e este corte não envia.
 - Retenção além de manter o histórico, termos do lançamento público, cobrança e a repaginação visual de UI, UX e DX. O fuso do dispositivo já está no ADR 0021.
-- A leitura ao vivo do Codex ficou no ADR 0015: comando local `codex app-server`, sem o aplicativo CodexBar e sem `auth.json`. Coletores seguintes esperam um contrato local de percentual e reset.
+- A leitura ao vivo do Codex ficou no ADR 0015: comando local `codex app-server`, sem o aplicativo CodexBar e sem `auth.json`. O Antigravity usa `agy -p /usage` (ADR 0022). OpenCode e Grok Build ainda não têm comando local de percentual e reset que deixe o login com o CLI.
 - Não há cache de segredo. Com o backend indisponível, a função que depende dele fecha (ADR 0007). Web Push é o adapter estreito deste app (ADR 0004).
 
 ### Ponteiro de 2026-10-29
@@ -168,4 +168,4 @@ E-mail BYOK da instalação, pelos provedores Resend, MillionSend, Cloudflare Em
 
 O Sabiá não saiu do produto. O aplicativo público não depende dele. O adapter de template está em Acesso para esta instalação (ADR 0019). Ele não envia mensagem. Um 202 desse gateway, quando o envio existir, é item aceito na fila de lá, não entrega ao destinatário.
 
-OpenCode, Antigravity e Grok Build não foram recusados como produto. A inspeção de 2026-10-30 não achou, neles, um arquivo local de percentual da janela e de horário de reset. O cartão do rastreador mostra esses dois campos. Sem esse contrato, o coletor não inventa a amostra. Eles entram quando o contrato existir, sem credencial e sem prompt.
+OpenCode e Grok Build não foram recusados como produto. A inspeção de 2026-10-30 não achou, neles, um arquivo local de percentual da janela e de horário de reset. O comando local que existe devolve tokens e custo da sessão. A janela do plano, nas outras barras, sai de ler o login e chamar o provedor. Sem um comando em que o CLI guarde o login, o coletor não inventa a amostra. O Antigravity passou a ter esse comando e está no ADR 0022.

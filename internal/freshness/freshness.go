@@ -2,6 +2,7 @@ package freshness
 
 import (
 	"math"
+	"strings"
 	"time"
 
 	"ai-usage-tracker/internal/contract"
@@ -62,7 +63,7 @@ func project(latest *contract.Sample, history []contract.Sample, quality string)
 	}
 	name := latest.Windows[0].Name
 	for _, window := range latest.Windows {
-		if window.Name == "five_hour" {
+		if window.Name == "five_hour" || strings.HasSuffix(window.Name, "_five_hour") {
 			name = window.Name
 			break
 		}

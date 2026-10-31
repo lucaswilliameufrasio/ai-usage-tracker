@@ -169,6 +169,7 @@ func runFile(ctx context.Context, file agent.File) (agent.Result, error) {
 		ClaudeFile:   file.ClaudeFile,
 		CodexDir:     file.CodexDir,
 		CodexCommand: codexBinary(file.CodexDir),
+		AgyCommand:   file.AgyCommand,
 		Now:          time.Now().UTC(),
 	})
 }
@@ -179,6 +180,12 @@ func report(result agent.Result, err error) int {
 	}
 	if result.CodexLive == "fallback" {
 		fmt.Fprintln(os.Stderr, "codex ao vivo indisponível; a observação do arquivo foi mantida")
+	}
+	if result.AgyLive == "read" {
+		fmt.Fprintln(os.Stderr, "antigravity lido pelo comando local")
+	}
+	if result.AgyLive == "miss" {
+		fmt.Fprintln(os.Stderr, "antigravity indisponível; nenhuma amostra nova deste provedor")
 	}
 	if errors.Is(err, errToken) {
 		fmt.Fprintln(os.Stderr, "token ilegível")

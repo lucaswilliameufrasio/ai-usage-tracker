@@ -83,8 +83,10 @@ export type ProjectionView = {
   dataQuality: string;
 };
 
+export type UsageProvider = "claude" | "codex" | "antigravity";
+
 export type ProviderCard = {
-  provider: "claude" | "codex";
+  provider: UsageProvider;
   freshness: string;
   reasonCode?: string;
   observedAt?: string;
@@ -234,7 +236,7 @@ function namedRoute(name: string): RouteName | undefined {
 
 const loginNames = ["github", "gitea", "google", "apple"] as const;
 const loginNameSchema = picklist(loginNames);
-const usageProviderSchema = picklist(["claude", "codex"] as const);
+const usageProviderSchema = picklist(["claude", "codex", "antigravity"] as const);
 const softString = optional(
   pipe(
     unknown(),
@@ -574,6 +576,9 @@ export function providerLabel(provider: string): string {
   if (provider === "codex") {
     return "Codex";
   }
+  if (provider === "antigravity") {
+    return "Antigravity";
+  }
   return "Provedor";
 }
 
@@ -583,6 +588,24 @@ export function windowLabel(name: string): string {
   }
   if (name === "seven_day") {
     return "7 dias";
+  }
+  if (name === "gemini_five_hour") {
+    return "Gemini, 5 horas";
+  }
+  if (name === "gemini_seven_day") {
+    return "Gemini, 7 dias";
+  }
+  if (name === "gemini_argon_five_hour") {
+    return "Gemini Argon, 5 horas";
+  }
+  if (name === "gemini_argon_seven_day") {
+    return "Gemini Argon, 7 dias";
+  }
+  if (name === "claude_gpt_five_hour") {
+    return "Claude e GPT, 5 horas";
+  }
+  if (name === "claude_gpt_seven_day") {
+    return "Claude e GPT, 7 dias";
   }
   if (name.startsWith("minutes_")) {
     return `${name.slice("minutes_".length)} minutos`;
@@ -670,15 +693,6 @@ export function staffTone(used: number): "calm" | "watch" | "flood" {
     return "watch";
   }
   return "calm";
-}
-
-export function primaryWindow(windows: WindowView[]): WindowView | undefined {
-  for (const item of windows) {
-    if (item.name === "five_hour") {
-      return item;
-    }
-  }
-  return windows[0];
 }
 
 export function projectionCopy(projection: ProjectionView): string {
@@ -908,16 +922,22 @@ function parseAccount(value: unknown): AccountView | undefined {
 }
 
 function normalizeCards(items: unknown[]): ProviderCard[] {
-  const found = new Map<"claude" | "codex", ProviderCard>();
+  const found = new Map<UsageProvider, ProviderCard>();
   for (const item of items) {
     const card = parseCard(item);
     if (card !== undefined) {
       found.set(card.provider, card);
     }
   }
-  const claude = found.get("claude") ?? emptyCard("claude");
-  const codex = found.get("codex") ?? emptyCard("codex");
-  return [claude, codex];
+  const cards = [
+    found.get("claude") ?? emptyCard("claude"),
+    found.get("codex") ?? emptyCard("codex"),
+  ];
+  const antigravity = found.get("antigravity");
+  if (antigravity !== undefined) {
+    cards.push(antigravity);
+  }
+  return cards;
 }
 
 export function parseCachedOverview(value: unknown): Parsed<Overview> {
@@ -1063,7 +1083,7 @@ function fail(message: string): ParseFail {
   return { ok: false, message };
 }
 
-function emptyCard(provider: "claude" | "codex"): ProviderCard {
+function emptyCard(provider: UsageProvider): ProviderCard {
   return { provider, freshness: "empty", windows: [] };
 }
 

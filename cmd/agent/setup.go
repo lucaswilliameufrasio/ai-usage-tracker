@@ -105,8 +105,12 @@ func runWizard(opts wizardOptions) (agent.File, string, string, error) {
 			return agent.File{}, "", "", err
 		}
 		codex = expandPath(opts.home, codex)
-		if claude == "" && codex == "" {
-			fmt.Fprintln(opts.out, "Informe o Claude, o Codex, ou os dois.")
+		agyCommand, err := askAgy(reader, opts, current.AgyCommand)
+		if err != nil {
+			return agent.File{}, "", "", err
+		}
+		if claude == "" && codex == "" && agyCommand == "" {
+			fmt.Fprintln(opts.out, "Informe o Claude, o Codex ou o Antigravity.")
 			continue
 		}
 		updateOn, err := askUpdate(reader, opts, current.AutoUpdate)
@@ -119,6 +123,7 @@ func runWizard(opts wizardOptions) (agent.File, string, string, error) {
 			Spool:      opts.spoolPath,
 			ClaudeFile: claude,
 			CodexDir:   codex,
+			AgyCommand: agyCommand,
 			AutoUpdate: updateOn,
 		}
 		ok, err := confirm(reader, opts, file, code != "")
@@ -142,12 +147,17 @@ func confirm(reader *bufio.Reader, opts wizardOptions, file agent.File, enrollin
 	if file.AutoUpdate {
 		updateLine = "Atualização automática ligada."
 	}
-	body := fmt.Sprintf("Servidor\n%s\n\nClaude\n%s\n%s\n\nCodex\n%s\n%s\n\n%s\n\n%s\nO próximo run sem flags envia direto.",
+	agyLine := "Antigravity desligado."
+	if file.AgyCommand != "" {
+		agyLine = "Antigravity ligado."
+	}
+	body := fmt.Sprintf("Servidor\n%s\n\nClaude\n%s\n%s\n\nCodex\n%s\n%s\n\n%s\n\n%s\n\n%s\nO próximo run sem flags envia direto.",
 		file.API,
 		emptyPath(file.ClaudeFile),
 		agent.DescribeClaude(file.ClaudeFile, opts.now),
 		emptyPath(file.CodexDir),
 		agent.DescribeCodex(file.CodexDir, opts.now),
+		agyLine,
 		updateLine,
 		tokenLine,
 	)
@@ -163,6 +173,33 @@ func confirm(reader *bufio.Reader, opts wizardOptions, file agent.File, enrollin
 		return true, nil
 	}
 	return false, nil
+}
+
+func askAgy(reader *bufio.Reader, opts wizardOptions, current string) (string, error) {
+	state := "desligado"
+	if strings.TrimSpace(current) != "" {
+		state = "ligado"
+	}
+	for {
+		paint(opts.out, opts.interactive, "Antigravity", "O comando agy informa a janela do plano. O rastreador não lê o token. Agora está "+state+".", "Enter mantém. s liga. n desliga. q cancela.")
+		line, err := readLine(reader)
+		if err != nil {
+			return "", err
+		}
+		if line == "q" {
+			return "", errWizardCancelled
+		}
+		if line == "" {
+			return current, nil
+		}
+		if line == "s" {
+			return "agy", nil
+		}
+		if line == "n" {
+			return "", nil
+		}
+		fmt.Fprintln(opts.out, "Responda s, n ou Enter.")
+	}
 }
 
 func askUpdate(reader *bufio.Reader, opts wizardOptions, current bool) (bool, error) {

@@ -23,6 +23,7 @@ type Config struct {
 	ClaudeFile   string
 	CodexDir     string
 	CodexCommand string
+	AgyCommand   string
 	Now          time.Time
 	Client       *http.Client
 }
@@ -35,6 +36,7 @@ type Result struct {
 	Pending   int
 	Blocked   bool
 	CodexLive string
+	AgyLive   string
 }
 
 func Run(ctx context.Context, cfg Config) (Result, error) {
@@ -50,7 +52,10 @@ func Run(ctx context.Context, cfg Config) (Result, error) {
 		Now:        cfg.Now,
 	})
 	if err != nil {
-		return Result{}, err
+		if !errors.Is(err, collect.ErrNoSource) || cfg.AgyCommand == "" {
+			return Result{}, err
+		}
+		batch = collect.Batch{}
 	}
 	codexLive := ""
 	if cfg.CodexDir != "" && cfg.CodexCommand != "" {
@@ -62,27 +67,38 @@ func Run(ctx context.Context, cfg Config) (Result, error) {
 			codexLive = "fallback"
 		}
 	}
+	agyLive := ""
+	if cfg.AgyCommand != "" {
+		live, liveErr := collect.ReadAntigravity(ctx, cfg.AgyCommand, cfg.Now)
+		if liveErr == nil && live != nil {
+			batch.Samples = append(batch.Samples, *live)
+			agyLive = "read"
+		} else {
+			agyLive = "miss"
+		}
+	}
 	var incoming []spool.Item
 	for _, sample := range batch.Samples {
 		body, err := sample.Canonical()
 		if err != nil {
-			return Result{CodexLive: codexLive}, err
+			return Result{CodexLive: codexLive, AgyLive: agyLive}, err
 		}
 		incoming = append(incoming, spool.Item{Kind: spool.KindSample, State: spool.StatePending, Body: body})
 	}
 	for _, report := range batch.Reports {
 		body, err := report.Canonical()
 		if err != nil {
-			return Result{CodexLive: codexLive}, err
+			return Result{CodexLive: codexLive, AgyLive: agyLive}, err
 		}
 		incoming = append(incoming, spool.Item{Kind: spool.KindReport, State: spool.StatePending, Body: body})
 	}
 	items, err := spool.Merge(cfg.SpoolPath, incoming)
 	if err != nil {
-		return Result{CodexLive: codexLive}, err
+		return Result{CodexLive: codexLive, AgyLive: agyLive}, err
 	}
 	result, err := send(ctx, cfg, items)
 	result.CodexLive = codexLive
+	result.AgyLive = agyLive
 	return result, err
 }
 

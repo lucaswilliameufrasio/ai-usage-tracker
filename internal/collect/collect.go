@@ -19,7 +19,12 @@ import (
 
 const maxRolloutBytes = 32 << 20
 
-var planPattern = regexp.MustCompile(`^[a-z0-9_]{1,32}$`)
+var (
+	planPattern = regexp.MustCompile(`^[a-z0-9_]{1,32}$`)
+	// ErrNoSource is returned when neither a Claude file nor a Codex directory was given.
+	// Antigravity is a separate command and does not count as one of these file sources.
+	ErrNoSource = errors.New("nenhuma fonte informada")
+)
 
 type Request struct {
 	ClaudeFile string
@@ -34,7 +39,7 @@ type Batch struct {
 
 func Read(request Request) (Batch, error) {
 	if request.ClaudeFile == "" && request.CodexDir == "" {
-		return Batch{}, errors.New("nenhuma fonte informada")
+		return Batch{}, ErrNoSource
 	}
 	var batch Batch
 	if request.ClaudeFile != "" {

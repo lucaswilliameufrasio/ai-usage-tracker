@@ -297,8 +297,8 @@ func (s *Server) listSamples(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) writeSamples(w http.ResponseWriter, r *http.Request, accountID string) {
 	provider := r.URL.Query().Get("provider")
-	if provider != "" && provider != contract.ProviderClaude && provider != contract.ProviderCodex {
-		apierr.Write(w, apierr.Invalid([]apierr.FieldError{{Field: "provider", Message: "Provedor deve ser claude ou codex."}}))
+	if provider != "" && provider != contract.ProviderClaude && provider != contract.ProviderCodex && provider != contract.ProviderAntigravity {
+		apierr.Write(w, apierr.Invalid([]apierr.FieldError{{Field: "provider", Message: "Provedor deve ser claude, codex ou antigravity."}}))
 		return
 	}
 	limit := 20
@@ -420,8 +420,8 @@ func (s *Server) writePersonOverview(w http.ResponseWriter, accountID string) {
 }
 
 func (s *Server) providerCards(accountID string, now time.Time, stale time.Duration) ([]map[string]any, error) {
-	providers := make([]map[string]any, 0, 2)
-	for _, provider := range []string{contract.ProviderClaude, contract.ProviderCodex} {
+	providers := make([]map[string]any, 0, 3)
+	for _, provider := range []string{contract.ProviderClaude, contract.ProviderCodex, contract.ProviderAntigravity} {
 		var sample *contract.Sample
 		record, err := s.Store.LatestSampleFor(accountID, provider)
 		if err == nil {
@@ -437,6 +437,9 @@ func (s *Server) providerCards(accountID string, now time.Time, stale time.Durat
 			report = &copied
 		} else if !errors.Is(err, store.ErrNotFound) {
 			return nil, err
+		}
+		if provider == contract.ProviderAntigravity && sample == nil && report == nil {
+			continue
 		}
 		history, err := s.Store.RecentSamplesFor(accountID, provider, 8)
 		if err != nil {

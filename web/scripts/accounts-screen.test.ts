@@ -4,6 +4,62 @@ import { JSDOM } from "jsdom";
 
 import { operatorTokenKey } from "../src/view.ts";
 
+describe("medicoes da pessoa", () => {
+  it("mostra uma régua para cada janela", async () => {
+    const previous = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = input instanceof URL ? input.toString() : String(input);
+      if (url.endsWith("/v1/session")) {
+        return json({ provider: "github" });
+      }
+      if (url.endsWith("/v1/account/overview")) {
+        return json({
+          generated_at: "2026-10-30T12:00:00Z",
+          stale_after_seconds: 1800,
+          providers: [
+            {
+              provider: "antigravity",
+              freshness: "current",
+              observed_at: "2026-10-30T12:00:00Z",
+              last_sample: {
+                windows: [
+                  { name: "gemini_seven_day", used: 50, limit: 100, unit: "percent", resets_at: "2026-11-06T15:00:00Z" },
+                  { name: "claude_gpt_seven_day", used: 80, limit: 100, unit: "percent", resets_at: "2026-11-06T15:00:00Z" },
+                ],
+              },
+            },
+          ],
+        });
+      }
+      return json({ message: "não usado" }, 404);
+    }) as typeof fetch;
+    const dom = new JSDOM(`<!doctype html><html><body><div id="app"></div></body></html>`, {
+      url: "http://127.0.0.1:8787/",
+      pretendToBeVisual: true,
+    });
+    try {
+      const view = dom.window;
+      const root = view.document.querySelector("#app");
+      if (!(root instanceof view.HTMLElement)) {
+        throw new Error("raiz ausente");
+      }
+      const app = await import("../src/app.ts");
+      app.start(root);
+      await waitFor(() => root.querySelector("h1")?.textContent === "Medições", root);
+      const card = root.querySelector("[data-provider='antigravity']");
+      assert.equal(card?.querySelectorAll(".staff").length, 2);
+      assert.equal(card?.textContent?.includes("50%"), true);
+      assert.equal(card?.textContent?.includes("80%"), true);
+      assert.equal(card?.textContent?.includes("Gemini, 7 dias"), true);
+      assert.equal(card?.textContent?.includes("Claude e GPT, 7 dias"), true);
+      assert.equal(root.textContent?.includes("Duas medições"), false);
+    } finally {
+      globalThis.fetch = previous;
+      dom.window.close();
+    }
+  });
+});
+
 describe("painel por conta", () => {
   it("mostra cada conta com a própria medição", async () => {
     const previous = globalThis.fetch;

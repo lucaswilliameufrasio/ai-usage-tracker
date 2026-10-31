@@ -13,6 +13,7 @@ type File struct {
 	Spool      string `json:"spool"`
 	ClaudeFile string `json:"claude_file,omitempty"`
 	CodexDir   string `json:"codex_dir,omitempty"`
+	AgyCommand string `json:"agy_command,omitempty"`
 	AutoUpdate bool   `json:"auto_update,omitempty"`
 }
 
@@ -26,7 +27,7 @@ func (file File) Ready() bool {
 	if file.API == "" || file.TokenFile == "" || file.Spool == "" {
 		return false
 	}
-	return file.ClaudeFile != "" || file.CodexDir != ""
+	return file.ClaudeFile != "" || file.CodexDir != "" || file.AgyCommand != ""
 }
 
 func DefaultPaths() (Paths, error) {

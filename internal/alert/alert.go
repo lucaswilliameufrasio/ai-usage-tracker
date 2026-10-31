@@ -82,6 +82,8 @@ func label(provider string) string {
 		return "Claude"
 	case contract.ProviderCodex:
 		return "Codex"
+	case contract.ProviderAntigravity:
+		return "Antigravity"
 	default:
 		return provider
 	}

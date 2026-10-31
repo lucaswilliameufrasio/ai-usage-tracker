@@ -20,6 +20,7 @@ var ErrMalformed = errors.New("malformed")
 const (
 	ProviderClaude         = "claude"
 	ProviderCodex          = "codex"
+	ProviderAntigravity    = "antigravity"
 	UnitPercent            = "percent"
 	StatusUnavailable      = "unavailable"
 	ReasonLimitsAbsent     = "LIMITS_ABSENT"
@@ -129,7 +130,7 @@ func DecodeReport(raw []byte, now time.Time) (SourceReport, error) {
 		fields = append(fields, FieldError{Field: "report_id", Message: "Identificador inválido."})
 	}
 	if !validProvider(report.Provider) {
-		fields = append(fields, FieldError{Field: "provider", Message: "Provedor deve ser claude ou codex."})
+		fields = append(fields, FieldError{Field: "provider", Message: "Provedor deve ser claude, codex ou antigravity."})
 	}
 	if report.ObservedAt.IsZero() || report.ObservedAt.After(now.Add(5*time.Minute)) {
 		fields = append(fields, FieldError{Field: "observed_at", Message: "Instante ausente ou no futuro."})
@@ -233,7 +234,7 @@ func validateSample(sample Sample, now time.Time) error {
 		fields = append(fields, FieldError{Field: "sample_id", Message: "Identificador inválido."})
 	}
 	if !validProvider(sample.Provider) {
-		fields = append(fields, FieldError{Field: "provider", Message: "Provedor deve ser claude ou codex."})
+		fields = append(fields, FieldError{Field: "provider", Message: "Provedor deve ser claude, codex ou antigravity."})
 	}
 	if sample.CollectedAt.IsZero() || sample.CollectedAt.After(now.Add(5*time.Minute)) {
 		fields = append(fields, FieldError{Field: "collected_at", Message: "Instante ausente ou no futuro."})
@@ -293,7 +294,7 @@ func normalizeSample(sample Sample) Sample {
 }
 
 func validProvider(provider string) bool {
-	return provider == ProviderClaude || provider == ProviderCodex
+	return provider == ProviderClaude || provider == ProviderCodex || provider == ProviderAntigravity
 }
 
 func sameOptionalTime(left *time.Time, right *time.Time) bool {

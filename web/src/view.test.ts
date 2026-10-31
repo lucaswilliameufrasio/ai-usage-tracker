@@ -12,6 +12,8 @@ import {
   parseLoginProvider,
   parseOverview,
   parseSettings,
+  providerLabel,
+  windowLabel,
   parseRoute,
   screenPath,
   formatInstant,
@@ -324,6 +326,38 @@ describe("visão geral", () => {
     assert.equal(JSON.stringify(parsed.value).includes("subj_canario"), false);
     const empty = parseOverview({});
     assert.equal(empty.ok, false);
+  });
+});
+
+describe("antigravity", () => {
+  it("mostra o cartão e os nomes das janelas sem o e-mail", () => {
+    const parsed = parseOverview({
+      generated_at: "2026-10-30T12:00:00Z",
+      stale_after_seconds: 1800,
+      providers: [
+        {
+          provider: "antigravity",
+          freshness: "current",
+          email: "canary@example.com",
+          last_sample: {
+            windows: [
+              { name: "gemini_seven_day", used: 50, resets_at: "2026-11-06T15:00:00Z" },
+              { name: "claude_gpt_five_hour", used: 20, resets_at: "2026-10-30T20:00:00Z" },
+            ],
+          },
+        },
+      ],
+    });
+    assert.equal(parsed.ok, true);
+    if (!parsed.ok) {
+      return;
+    }
+    assert.equal(parsed.value.providers.length, 3);
+    assert.equal(parsed.value.providers[2]?.provider, "antigravity");
+    assert.equal(providerLabel("antigravity"), "Antigravity");
+    assert.equal(windowLabel("gemini_seven_day"), "Gemini, 7 dias");
+    assert.equal(windowLabel("claude_gpt_five_hour"), "Claude e GPT, 5 horas");
+    assert.equal(JSON.stringify(parsed.value).includes("canary@example.com"), false);
   });
 });
 

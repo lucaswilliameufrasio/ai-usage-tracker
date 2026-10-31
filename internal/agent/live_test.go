@@ -160,3 +160,30 @@ func itoa(value int) string {
 	}
 	return string(digits)
 }
+
+func TestAntigravityPostsTheWindowWithoutTheReply(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Date(2026, 10, 30, 18, 0, 0, 0, time.UTC)
+	script := filepath.Join(dir, "agy")
+	writeAgentScript(t, script, `#!/bin/sh
+printf '%s\n' '{"status":"SUCCESS","num_turns":0,"response":"canary@example.com","command":{"name":"usage","data":{"groups":[{"name":"Gemini Models","buckets":[{"id":"gemini-weekly","window":"weekly","remaining_fraction":0.5,"reset_time":"2026-11-06T15:00:00Z"}]}]}}}'
+`)
+	bodies := serveSamples(t)
+	result, err := Run(context.Background(), Config{
+		API: bodies.URL, Token: "device-token", SpoolPath: filepath.Join(dir, "spool.json"),
+		AgyCommand: script, Now: now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.AgyLive != "read" || result.Accepted != 1 {
+		t.Fatalf("resultado %+v", result)
+	}
+	sample := decodePosted(t, bodies.snapshot()[0], now.Add(time.Minute))
+	if sample.Provider != contract.ProviderAntigravity || len(sample.Windows) != 1 || sample.Windows[0].Name != "gemini_seven_day" || sample.Windows[0].Used != 50 {
+		t.Fatalf("%+v", sample)
+	}
+	if strings.Contains(string(bodies.snapshot()[0]), "canary@example.com") {
+		t.Fatal("o envio ficou com o texto da resposta")
+	}
+}

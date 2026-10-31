@@ -88,6 +88,13 @@ PRAGMA user_version = 1;
 	if attemptsColumn != 1 {
 		t.Fatal("fila sem tentativas")
 	}
+	var emailTable int
+	if err := db.db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'email_channel'`).Scan(&emailTable); err != nil {
+		t.Fatal(err)
+	}
+	if emailTable != 1 {
+		t.Fatal("e-mail sem tabela")
+	}
 	deliveries, err := db.ListDeliveries(5)
 	if err != nil || len(deliveries) != 1 || deliveries[0].ID != "dly_antigo" || deliveries[0].Status != "sent" || deliveries[0].Attempts != 0 || !deliveries[0].NextAttempt.IsZero() {
 		t.Fatalf("%+v %v", deliveries, err)

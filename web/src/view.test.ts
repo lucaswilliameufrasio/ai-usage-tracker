@@ -17,6 +17,8 @@ import {
   parseRoute,
   screenPath,
   formatInstant,
+  emailGuide,
+  parseEmail,
   parseSabia,
   projectionCopy,
   readingCopy,
@@ -133,6 +135,23 @@ describe("fuso", () => {
     assert.equal(JSON.stringify(parsed.value).includes("sb_deploy_nao_mostrar"), false);
     assert.equal(parsed.value.deployKeyPresent, true);
     assert.equal(parsed.value.applicationId, "");
+    const email = parseEmail({
+      provider: "resend",
+      from_address: "avisos@exemplo.com",
+      to_address: "pessoa@exemplo.com",
+      active: true,
+      secret_present: true,
+      api_key: "re_sintetico_nao_mostrar",
+    });
+    assert.equal(email.ok, true);
+    if (!email.ok) {
+      return;
+    }
+    assert.equal(JSON.stringify(email.value).includes("re_sintetico_nao_mostrar"), false);
+    assert.equal(email.value.secretPresent, true);
+    assert.equal(emailGuide("resend")?.example.includes("re_exemplo_nao_usar"), true);
+    assert.equal(emailGuide("ses")?.example.includes("sa-east-1"), true);
+    assert.equal(emailGuide("outro"), undefined);
   });
 });
 

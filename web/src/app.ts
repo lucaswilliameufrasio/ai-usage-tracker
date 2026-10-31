@@ -14,6 +14,8 @@ import {
   parseCachedOverview,
   parseDeliveries,
   parseDevices,
+  parseEmail,
+  emailGuide,
   parseHistory,
   parseLoginCatalog,
   parseLoginProvider,
@@ -39,6 +41,7 @@ import {
   type AccountView,
   type DeliveryView,
   type DeviceView,
+  type EmailView,
   type HistorySample,
   type LoginProviderView,
   type Overview,
@@ -80,6 +83,7 @@ type PageState =
       backend?: SecretBackendView;
       providers: LoginProviderView[];
       sabia?: SabiaView;
+      email?: EmailView;
       problem: string;
     };
 
@@ -671,6 +675,9 @@ function accessView(doc: Document, view: Window, state: AppState, paint: () => v
   if (page.problem !== "") {
     wrap.append(note(doc, page.problem, "problem"));
   }
+  if (page.email !== undefined) {
+    wrap.append(emailForm(doc, view, state, page.email, paint));
+  }
   if (page.sabia !== undefined) {
     wrap.append(sabiaForm(doc, view, state, page.sabia, paint));
   }
@@ -678,6 +685,162 @@ function accessView(doc: Document, view: Window, state: AppState, paint: () => v
     wrap.append(loginForm(doc, view, state, item, paint));
   }
   return wrap;
+}
+
+function emailForm(doc: Document, view: Window, state: AppState, item: EmailView, paint: () => void): HTMLFormElement {
+  const form = doc.createElement("form");
+  form.className = "stack access-form";
+  form.dataset.panel = "email";
+  form.append(el(doc, "h2", "", "E-mail da instalação"));
+  const kept = emailKept(item);
+  form.append(el(doc, "p", "meta", kept));
+  form.append(el(doc, "p", "", "Um remetente e um destinatário para toda a instalação. A chave entra no cofre e não volta para esta tela."));
+  form.append(el(doc, "p", "", "O Sabiá não envia este aviso. Sem canal ativo, o e-mail fica indisponível."));
+  if (item.lastStatus !== undefined) {
+    form.append(el(doc, "p", "meta", `Último envio: ${emailStatus(item.lastStatus, item.lastDetail)}`));
+  }
+  const guideHost = doc.createElement("div");
+  guideHost.dataset.emailGuide = "1";
+  form.append(guideHost);
+  const providerLabel = doc.createElement("label");
+  providerLabel.textContent = "Provedor";
+  const provider = doc.createElement("select");
+  provider.name = "provider";
+  const choices: Array<{ value: string; label: string }> = [
+    { value: "resend", label: "Resend" },
+    { value: "millionsend", label: "MillionSend" },
+    { value: "cloudflare", label: "Cloudflare Email" },
+    { value: "ses", label: "Amazon SES" },
+  ];
+  for (const choice of choices) {
+    const option = doc.createElement("option");
+    option.value = choice.value;
+    option.textContent = choice.label;
+    provider.append(option);
+  }
+  provider.value = item.provider === "" ? "resend" : item.provider;
+  providerLabel.append(provider);
+  form.append(providerLabel);
+  form.append(field(doc, "Remetente", "text", "from_address", item.fromAddress));
+  form.append(field(doc, "Destinatário", "email", "to_address", item.toAddress));
+  const account = doc.createElement("label");
+  account.dataset.emailAccount = "1";
+  const accountText = doc.createElement("span");
+  accountText.dataset.emailAccountLabel = "1";
+  const accountInput = doc.createElement("input");
+  accountInput.type = "text";
+  accountInput.name = "account_ref";
+  accountInput.value = item.accountRef;
+  account.append(accountText, accountInput);
+  form.append(account);
+  const activeLabel = el(doc, "label", "check", "E-mail ativo");
+  const active = doc.createElement("input");
+  active.type = "checkbox";
+  active.name = "active";
+  active.checked = item.active;
+  activeLabel.prepend(active);
+  form.append(activeLabel);
+  form.append(emailSecret(doc, "Chave da API", "api_key", "api"));
+  form.append(emailSecret(doc, "Access key id", "access_key_id", "ses"));
+  form.append(emailSecret(doc, "Chave secreta", "secret_access_key", "ses"));
+  const save = button(doc, "Guardar", "primary");
+  save.type = "submit";
+  form.append(save);
+  if (item.provider !== "" || item.secretPresent || item.fromAddress !== "") {
+    const remove = button(doc, "Remover o e-mail", "quiet");
+    remove.dataset.action = "remove-email";
+    remove.addEventListener("click", () => {
+      void removeEmail(view, state, paint);
+    });
+    form.append(remove);
+  }
+  const sync = () => {
+    paintEmailProvider(doc, view, form, provider.value);
+  };
+  provider.addEventListener("change", sync);
+  sync();
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void saveEmail(view, state, form, paint);
+  });
+  return form;
+}
+
+function emailKept(item: EmailView): string {
+  if (!item.active) {
+    return "E-mail indisponível.";
+  }
+  if (item.secretPresent) {
+    return "E-mail ativo. Chave guardada.";
+  }
+  return "E-mail ativo. Nenhuma chave guardada.";
+}
+
+function emailStatus(status: string, detail: string | undefined): string {
+  if (status === "sent") {
+    return "enviado";
+  }
+  if (status === "pending") {
+    return "na fila";
+  }
+  if (status === "suppressed") {
+    return "em horário silencioso";
+  }
+  if (status === "failed") {
+    if (detail !== undefined && detail !== "") {
+      return `falhou (${detail})`;
+    }
+    return "falhou";
+  }
+  return status;
+}
+
+function emailSecret(doc: Document, labelText: string, name: string, kind: string): HTMLLabelElement {
+  const label = doc.createElement("label");
+  label.dataset.emailKind = kind;
+  label.textContent = labelText;
+  const input = doc.createElement("input");
+  input.type = "password";
+  input.name = name;
+  input.autocomplete = "off";
+  input.spellcheck = false;
+  input.placeholder = "Deixe vazio para manter a chave guardada.";
+  input.value = "";
+  input.dataset.secret = "email";
+  label.append(input);
+  return label;
+}
+
+function paintEmailProvider(doc: Document, view: Window, form: HTMLFormElement, provider: string): void {
+  const realm = doc.defaultView;
+  if (realm === null) {
+    return;
+  }
+  const host = form.querySelector("[data-email-guide]");
+  if (host instanceof realm.HTMLElement) {
+    host.replaceChildren();
+    const guide = emailGuide(provider);
+    if (guide !== undefined) {
+      host.append(loginGuideView(doc, view, provider, guide.steps, guide.example));
+    }
+  }
+  const account = form.querySelector("[data-email-account]");
+  const accountText = form.querySelector("[data-email-account-label]");
+  const showAccount = provider === "cloudflare" || provider === "ses";
+  if (account instanceof realm.HTMLElement) {
+    account.hidden = !showAccount;
+  }
+  if (accountText instanceof realm.HTMLElement) {
+    accountText.textContent = provider === "ses" ? "Região do SES" : "Conta da Cloudflare";
+  }
+  const secrets = form.querySelectorAll("[data-email-kind]");
+  for (const node of secrets) {
+    if (!(node instanceof realm.HTMLElement)) {
+      continue;
+    }
+    const kind = node.dataset.emailKind;
+    node.hidden = provider === "ses" ? kind !== "ses" : kind !== "api";
+  }
 }
 
 function sabiaForm(doc: Document, view: Window, state: AppState, item: SabiaView, paint: () => void): HTMLFormElement {
@@ -914,13 +1077,13 @@ async function loadAccess(view: Window, state: AppState, paint: () => void): Pro
       loseSession(view, state, providersResult.message, paint);
       return;
     }
-    state.page = accessState(backend.value, [], providersResult.message, undefined);
+    state.page = accessState(backend.value, [], providersResult.message, undefined, undefined);
     paint();
     return;
   }
   const providers = parseLoginCatalog(providersResult.body);
   if (!providers.ok) {
-    state.page = accessState(backend.value, [], providers.message, undefined);
+    state.page = accessState(backend.value, [], providers.message, undefined, undefined);
     paint();
     return;
   }
@@ -933,17 +1096,41 @@ async function loadAccess(view: Window, state: AppState, paint: () => void): Pro
       loseSession(view, state, sabiaResult.message, paint);
       return;
     }
-    state.page = accessState(backend.value, providers.value, "", undefined);
+    state.page = accessState(backend.value, providers.value, "", undefined, undefined);
     paint();
     return;
   }
   const sabia = parseSabia(sabiaResult.body);
   if (!sabia.ok) {
-    state.page = accessState(backend.value, providers.value, sabia.message, undefined);
+    state.page = accessState(backend.value, providers.value, sabia.message, undefined, undefined);
     paint();
     return;
   }
-  state.page = accessState(backend.value, providers.value, "", sabia.value);
+  const emailResult = await apiRequest(view.location.origin, "/v1/admin/email", state.token, "GET");
+  if (loadId !== state.loadId) {
+    return;
+  }
+  if (!emailResult.ok) {
+    if (emailResult.status === 401) {
+      loseSession(view, state, emailResult.message, paint);
+      return;
+    }
+    if (emailResult.status === 404) {
+      state.page = accessState(backend.value, providers.value, "", sabia.value, undefined);
+      paint();
+      return;
+    }
+    state.page = accessState(backend.value, providers.value, emailResult.message, sabia.value, undefined);
+    paint();
+    return;
+  }
+  const email = parseEmail(emailResult.body);
+  if (!email.ok) {
+    state.page = accessState(backend.value, providers.value, email.message, sabia.value, undefined);
+    paint();
+    return;
+  }
+  state.page = accessState(backend.value, providers.value, "", sabia.value, email.value);
   paint();
 }
 
@@ -979,18 +1166,18 @@ async function saveLogin(
       loseSession(view, state, result.message, paint);
       return;
     }
-    state.page = accessState(current.backend, current.providers, result.message, current.sabia);
+    state.page = accessState(current.backend, current.providers, result.message, current.sabia, current.email);
     paint();
     return;
   }
   const parsed = parseLoginProvider(result.body);
   if (!parsed.ok) {
-    state.page = accessState(current.backend, current.providers, parsed.message, current.sabia);
+    state.page = accessState(current.backend, current.providers, parsed.message, current.sabia, current.email);
     paint();
     return;
   }
   state.notice = "Login guardado. O segredo não volta para esta tela.";
-  state.page = accessState(current.backend, replaceProvider(current.providers, parsed.value), "", current.sabia);
+  state.page = accessState(current.backend, replaceProvider(current.providers, parsed.value), "", current.sabia, current.email);
   paint();
 }
 
@@ -1006,18 +1193,18 @@ async function removeLogin(view: Window, state: AppState, provider: string, pain
       loseSession(view, state, result.message, paint);
       return;
     }
-    state.page = accessState(current.backend, current.providers, result.message, current.sabia);
+    state.page = accessState(current.backend, current.providers, result.message, current.sabia, current.email);
     paint();
     return;
   }
   const parsed = parseLoginProvider(result.body);
   if (!parsed.ok) {
-    state.page = accessState(current.backend, current.providers, parsed.message, current.sabia);
+    state.page = accessState(current.backend, current.providers, parsed.message, current.sabia, current.email);
     paint();
     return;
   }
   state.notice = "Login removido.";
-  state.page = accessState(current.backend, replaceProvider(current.providers, parsed.value), "", current.sabia);
+  state.page = accessState(current.backend, replaceProvider(current.providers, parsed.value), "", current.sabia, current.email);
   paint();
 }
 
@@ -1026,6 +1213,7 @@ function accessState(
   providers: LoginProviderView[],
   problem: string,
   sabia: SabiaView | undefined,
+  email: EmailView | undefined,
 ): Extract<PageState, { route: "access" }> {
   const page: Extract<PageState, { route: "access" }> = { route: "access", providers, problem };
   if (backend !== undefined) {
@@ -1034,14 +1222,17 @@ function accessState(
   if (sabia !== undefined) {
     page.sabia = sabia;
   }
+  if (email !== undefined) {
+    page.email = email;
+  }
   return page;
 }
 
-function currentAccess(state: AppState): { backend?: SecretBackendView; providers: LoginProviderView[]; sabia?: SabiaView } {
+function currentAccess(state: AppState): { backend?: SecretBackendView; providers: LoginProviderView[]; sabia?: SabiaView; email?: EmailView } {
   if (state.page.route !== "access") {
     return { providers: [] };
   }
-  const access: { backend?: SecretBackendView; providers: LoginProviderView[]; sabia?: SabiaView } = {
+  const access: { backend?: SecretBackendView; providers: LoginProviderView[]; sabia?: SabiaView; email?: EmailView } = {
     providers: state.page.providers,
   };
   if (state.page.backend !== undefined) {
@@ -1050,7 +1241,103 @@ function currentAccess(state: AppState): { backend?: SecretBackendView; provider
   if (state.page.sabia !== undefined) {
     access.sabia = state.page.sabia;
   }
+  if (state.page.email !== undefined) {
+    access.email = state.page.email;
+  }
   return access;
+}
+
+async function saveEmail(view: Window, state: AppState, form: HTMLFormElement, paint: () => void): Promise<void> {
+  const loadId = begin(state);
+  const current = currentAccess(state);
+  const saved = await putEmail(view, state, form, loadId, current, paint);
+  if (saved === undefined) {
+    return;
+  }
+  state.notice = "E-mail guardado. A chave não volta para esta tela.";
+  state.page = accessState(current.backend, current.providers, "", current.sabia, saved);
+  paint();
+}
+
+async function removeEmail(view: Window, state: AppState, paint: () => void): Promise<void> {
+  const loadId = begin(state);
+  const current = currentAccess(state);
+  const result = await apiRequest(view.location.origin, "/v1/admin/email", state.token, "DELETE");
+  if (loadId !== state.loadId) {
+    return;
+  }
+  if (!result.ok) {
+    if (result.status === 401) {
+      loseSession(view, state, result.message, paint);
+      return;
+    }
+    state.page = accessState(current.backend, current.providers, result.message, current.sabia, current.email);
+    paint();
+    return;
+  }
+  const parsed = parseEmail(result.body);
+  if (!parsed.ok) {
+    state.page = accessState(current.backend, current.providers, parsed.message, current.sabia, current.email);
+    paint();
+    return;
+  }
+  state.notice = "E-mail removido.";
+  state.page = accessState(current.backend, current.providers, "", current.sabia, parsed.value);
+  paint();
+}
+
+async function putEmail(
+  view: Window,
+  state: AppState,
+  form: HTMLFormElement,
+  loadId: number,
+  current: { backend?: SecretBackendView; providers: LoginProviderView[]; sabia?: SabiaView; email?: EmailView },
+  paint: () => void,
+): Promise<EmailView | undefined> {
+  const data = readForm(form);
+  const provider = formText(data, "provider");
+  const body: Record<string, unknown> = {
+    provider,
+    from_address: formText(data, "from_address"),
+    to_address: formText(data, "to_address"),
+    account_ref: provider === "cloudflare" || provider === "ses" ? formText(data, "account_ref") : "",
+    active: inputNamed(form, "active")?.checked === true,
+  };
+  if (provider === "ses") {
+    const accessKey = formText(data, "access_key_id");
+    const secretKey = formText(data, "secret_access_key");
+    if (accessKey !== "") {
+      body.access_key_id = accessKey;
+    }
+    if (secretKey !== "") {
+      body.secret_access_key = secretKey;
+    }
+  } else {
+    const apiKey = formText(data, "api_key");
+    if (apiKey !== "") {
+      body.api_key = apiKey;
+    }
+  }
+  const result = await apiRequest(view.location.origin, "/v1/admin/email", state.token, "PUT", body);
+  if (loadId !== state.loadId) {
+    return undefined;
+  }
+  if (!result.ok) {
+    if (result.status === 401) {
+      loseSession(view, state, result.message, paint);
+      return undefined;
+    }
+    state.page = accessState(current.backend, current.providers, result.message, current.sabia, current.email);
+    paint();
+    return undefined;
+  }
+  const parsed = parseEmail(result.body);
+  if (!parsed.ok) {
+    state.page = accessState(current.backend, current.providers, parsed.message, current.sabia, current.email);
+    paint();
+    return undefined;
+  }
+  return parsed.value;
 }
 
 async function saveSabia(view: Window, state: AppState, form: HTMLFormElement, paint: () => void): Promise<void> {
@@ -1061,7 +1348,7 @@ async function saveSabia(view: Window, state: AppState, form: HTMLFormElement, p
     return;
   }
   state.notice = "Template guardado. A chave de deploy não volta para esta tela.";
-  state.page = accessState(current.backend, current.providers, "", saved);
+  state.page = accessState(current.backend, current.providers, "", saved, current.email);
   paint();
 }
 
@@ -1081,18 +1368,18 @@ async function planSabia(view: Window, state: AppState, form: HTMLFormElement, p
       loseSession(view, state, result.message, paint);
       return;
     }
-    state.page = accessState(current.backend, current.providers, result.message, saved);
+    state.page = accessState(current.backend, current.providers, result.message, saved, current.email);
     paint();
     return;
   }
   const plan = parseSabiaPlan(result.body);
   if (!plan.ok) {
-    state.page = accessState(current.backend, current.providers, plan.message, saved);
+    state.page = accessState(current.backend, current.providers, plan.message, saved, current.email);
     paint();
     return;
   }
   state.notice = "Plano do Sabiá recebido.";
-  state.page = accessState(current.backend, current.providers, "", withChanges(saved, plan.value));
+  state.page = accessState(current.backend, current.providers, "", withChanges(saved, plan.value), current.email);
   paint();
 }
 
@@ -1115,18 +1402,18 @@ async function applySabia(view: Window, state: AppState, form: HTMLFormElement, 
     }
     const changes = current.sabia?.changes;
     const next = changes === undefined ? saved : withChanges(saved, changes);
-    state.page = accessState(current.backend, current.providers, result.message, next);
+    state.page = accessState(current.backend, current.providers, result.message, next, current.email);
     paint();
     return;
   }
   const applied = parseSabiaApply(result.body);
   if (!applied.ok) {
-    state.page = accessState(current.backend, current.providers, applied.message, saved);
+    state.page = accessState(current.backend, current.providers, applied.message, saved, current.email);
     paint();
     return;
   }
   state.notice = `Sincronizado com o Sabiá. Aplicado: ${applied.value.applied}. Sem mudança: ${applied.value.unchanged}.`;
-  state.page = accessState(current.backend, current.providers, "", saved);
+  state.page = accessState(current.backend, current.providers, "", saved, current.email);
   paint();
 }
 
@@ -1135,7 +1422,7 @@ async function putSabia(
   state: AppState,
   form: HTMLFormElement,
   loadId: number,
-  current: { backend?: SecretBackendView; providers: LoginProviderView[]; sabia?: SabiaView },
+  current: { backend?: SecretBackendView; providers: LoginProviderView[]; sabia?: SabiaView; email?: EmailView },
   paint: () => void,
 ): Promise<SabiaView | undefined> {
   const data = readForm(form);
@@ -1163,13 +1450,13 @@ async function putSabia(
       loseSession(view, state, result.message, paint);
       return undefined;
     }
-    state.page = accessState(current.backend, current.providers, result.message, current.sabia);
+    state.page = accessState(current.backend, current.providers, result.message, current.sabia, current.email);
     paint();
     return undefined;
   }
   const parsed = parseSabia(result.body);
   if (!parsed.ok) {
-    state.page = accessState(current.backend, current.providers, parsed.message, current.sabia);
+    state.page = accessState(current.backend, current.providers, parsed.message, current.sabia, current.email);
     paint();
     return undefined;
   }

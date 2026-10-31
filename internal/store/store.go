@@ -28,7 +28,7 @@ var (
 
 const observationCap = 240
 
-const schemaVersion = 5
+const schemaVersion = 6
 
 const deliveryColumns = `id, idempotency_key, subscription_id, kind, provider, title, body, status, detail, attempts, next_attempt_at, created_at, updated_at`
 
@@ -160,6 +160,11 @@ func (s *Store) migrate() error {
 			return err
 		}
 		version = 5
+	}
+	if version < 6 {
+		if err := s.migrateV6(); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -349,6 +354,41 @@ CREATE TABLE sabia_template (
 		return fmt.Errorf("migrar sabiá: %w", err)
 	}
 	if _, err := s.db.Exec(`PRAGMA user_version = 5`); err != nil {
+		return fmt.Errorf("gravar versão: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) migrateV6() error {
+	schema := `
+CREATE TABLE email_channel (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  provider TEXT NOT NULL,
+  from_address TEXT NOT NULL,
+  to_address TEXT NOT NULL,
+  account_ref TEXT NOT NULL,
+  active INTEGER NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE email_deliveries (
+  id TEXT PRIMARY KEY,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  kind TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  status TEXT NOT NULL,
+  detail TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  next_attempt_at TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+`
+	if _, err := s.db.Exec(schema); err != nil {
+		return fmt.Errorf("migrar e-mail: %w", err)
+	}
+	if _, err := s.db.Exec(`PRAGMA user_version = 6`); err != nil {
 		return fmt.Errorf("gravar versão: %w", err)
 	}
 	return nil

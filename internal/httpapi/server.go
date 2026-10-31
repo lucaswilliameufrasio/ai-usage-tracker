@@ -21,6 +21,7 @@ import (
 	"ai-usage-tracker/internal/contract"
 	"ai-usage-tracker/internal/freshness"
 	"ai-usage-tracker/internal/login"
+	"ai-usage-tracker/internal/mail"
 	"ai-usage-tracker/internal/push"
 	"ai-usage-tracker/internal/store"
 	"ai-usage-tracker/internal/token"
@@ -47,6 +48,7 @@ type Server struct {
 	Vault          vault.Box
 	Login          *login.Flow
 	SabiaHTTP      *http.Client
+	Mail           *mail.Client
 }
 
 func (s *Server) Handler() http.Handler {
@@ -55,6 +57,9 @@ func (s *Server) Handler() http.Handler {
 	}
 	if s.Logger == nil {
 		s.Logger = slog.New(slog.NewTextHandler(os.Stderr, nil))
+	}
+	if s.Mail == nil {
+		s.Mail = mail.Default()
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.health)
@@ -83,6 +88,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /v1/admin/sabia", s.operator(s.putSabia))
 	mux.HandleFunc("POST /v1/admin/sabia/plan", s.operator(s.postSabiaPlan))
 	mux.HandleFunc("POST /v1/admin/sabia/apply", s.operator(s.postSabiaApply))
+	mux.HandleFunc("GET /v1/admin/email", s.operator(s.getEmail))
+	mux.HandleFunc("PUT /v1/admin/email", s.operator(s.putEmail))
+	mux.HandleFunc("DELETE /v1/admin/email", s.operator(s.deleteEmail))
 	mux.HandleFunc("GET /v1/login/providers", s.publicLogins)
 	mux.HandleFunc("GET /v1/login/{provider}/start", s.loginStart)
 	mux.HandleFunc("GET /v1/login/{provider}/callback", s.loginCallback)
@@ -675,43 +683,47 @@ func (s *Server) planAlerts(sample contract.Sample) error {
 		}
 	}
 	for _, intent := range intents {
-		if quiet {
-			if err := s.insertDelivery(intent, "", "suppressed", "QUIET_HOURS", intent.Key+"|quiet"); err != nil {
-				return err
-			}
-			continue
+		if err := s.planPush(intent, quiet, active); err != nil {
+			return err
 		}
-		if len(active) == 0 || s.Sender == nil || !s.Sender.Configured() {
-			status := "no_subscription"
-			detail := ""
-			suffix := "|none"
-			if s.Sender == nil || !s.Sender.Configured() {
-				status = "unconfigured"
-				detail = "PUSH_UNCONFIGURED"
-				suffix = "|unconfigured"
-			}
-			if err := s.insertDelivery(intent, "", status, detail, intent.Key+suffix); err != nil {
-				return err
-			}
-			continue
-		}
-		for _, sub := range active {
-			status := "pending"
-			detail := ""
-			pending, err := s.Store.CountPendingDeliveries()
-			if err != nil {
-				return err
-			}
-			if pending >= deliveryQueueCap {
-				status = "failed"
-				detail = "QUEUE_FULL"
-			}
-			if err := s.insertDelivery(intent, sub.ID, status, detail, intent.Key+"|"+sub.ID); err != nil {
-				return err
-			}
+		if err := s.planEmail(intent, quiet); err != nil {
+			return err
 		}
 	}
 	return s.flush()
+}
+
+func (s *Server) planPush(intent alert.Intent, quiet bool, active []store.PushSubscription) error {
+	if quiet {
+		return s.insertDelivery(intent, "", "suppressed", "QUIET_HOURS", intent.Key+"|quiet")
+	}
+	if len(active) == 0 || s.Sender == nil || !s.Sender.Configured() {
+		status := "no_subscription"
+		detail := ""
+		suffix := "|none"
+		if s.Sender == nil || !s.Sender.Configured() {
+			status = "unconfigured"
+			detail = "PUSH_UNCONFIGURED"
+			suffix = "|unconfigured"
+		}
+		return s.insertDelivery(intent, "", status, detail, intent.Key+suffix)
+	}
+	for _, sub := range active {
+		status := "pending"
+		detail := ""
+		pending, err := s.Store.CountPendingDeliveries()
+		if err != nil {
+			return err
+		}
+		if pending >= deliveryQueueCap {
+			status = "failed"
+			detail = "QUEUE_FULL"
+		}
+		if err := s.insertDelivery(intent, sub.ID, status, detail, intent.Key+"|"+sub.ID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Server) insertDelivery(intent alert.Intent, subscriptionID string, status string, detail string, key string) error {
@@ -744,6 +756,13 @@ func (s *Server) FlushDue() error {
 }
 
 func (s *Server) flush() error {
+	if err := s.flushPush(); err != nil {
+		return err
+	}
+	return s.flushEmail()
+}
+
+func (s *Server) flushPush() error {
 	if s.Sender == nil || !s.Sender.Configured() {
 		return nil
 	}

@@ -29,6 +29,7 @@ body {
 button,
 input,
 textarea,
+select,
 a {
   font: inherit;
   color: inherit;
@@ -295,10 +296,15 @@ label.check {
 }
 
 input,
-textarea {
+textarea,
+select {
   border: 1px solid var(--line);
   background: #0c1916;
   padding: 0.55rem 0.65rem;
+}
+
+label[hidden] {
+  display: none;
 }
 
 textarea {

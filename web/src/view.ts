@@ -70,6 +70,19 @@ export type SabiaView = {
   changes?: SabiaChangeView[];
 };
 
+export type EmailProviderName = "resend" | "millionsend" | "cloudflare" | "ses";
+
+export type EmailView = {
+  provider: EmailProviderName | "";
+  fromAddress: string;
+  toAddress: string;
+  accountRef: string;
+  active: boolean;
+  secretPresent: boolean;
+  lastStatus?: string;
+  lastDetail?: string;
+};
+
 export type WindowView = {
   name: string;
   used: number;
@@ -345,6 +358,84 @@ const sabiaApplySchema = object({
   applied: pipe(number(), finite()),
   unchanged: pipe(number(), finite()),
 });
+
+const emailProviderSchema = picklist(["resend", "millionsend", "cloudflare", "ses"]);
+
+const emailSchema = object({
+  provider: optional(emailProviderSchema),
+  from_address: optional(string()),
+  to_address: optional(string()),
+  account_ref: optional(string()),
+  active: boolean(),
+  secret_present: boolean(),
+  last_status: optional(string()),
+  last_detail: optional(string()),
+});
+
+const emailGuides: Record<EmailProviderName, LoginGuide> = {
+  resend: {
+    steps: [
+      "Em resend.com, abra API Keys e crie uma chave. Ela começa com re_.",
+      "O domínio do remetente precisa estar verificado nessa conta.",
+      "O destinatário é o endereço que recebe o aviso desta instalação.",
+    ],
+    example: "Remetente: Avisos <avisos@exemplo.com>\nDestinatário: pessoa@exemplo.com\nChave: re_exemplo_nao_usar",
+  },
+  millionsend: {
+    steps: [
+      "Na MillionSend, crie uma chave de API. Ela começa com ms_.",
+      "O envio usa o mesmo formato do Resend, no endereço da MillionSend.",
+      "O domínio do remetente precisa estar verificado nessa conta.",
+    ],
+    example: "Remetente: avisos@exemplo.com\nDestinatário: pessoa@exemplo.com\nChave: ms_exemplo_nao_usar",
+  },
+  cloudflare: {
+    steps: [
+      "No painel da Cloudflare, copie o ID da conta. São letras e números.",
+      "Crie um token de API com permissão de envio de e-mail.",
+      "O remetente é um endereço do domínio já habilitado para envio. Não use SMTP.",
+    ],
+    example: "Conta: a1b2c3d4e5f6789012345678abcdef01\nRemetente: avisos@exemplo.com\nDestinatário: pessoa@exemplo.com\nChave: cf_exemplo_nao_usar",
+  },
+  ses: {
+    steps: [
+      "No IAM, crie uma chave de acesso com permissão ses:SendEmail.",
+      "A região é a do endpoint, em minúsculas, como sa-east-1.",
+      "O remetente precisa estar verificado nessa região.",
+    ],
+    example: "Região: sa-east-1\nRemetente: Avisos <avisos@exemplo.com>\nDestinatário: pessoa@exemplo.com\nAccess key: AKIAEXEMPLONAOUSAR\nSegredo: exemploSegredoSESNaoUsar",
+  },
+};
+
+export function emailGuide(provider: string): LoginGuide | undefined {
+  if (provider !== "resend" && provider !== "millionsend" && provider !== "cloudflare" && provider !== "ses") {
+    return undefined;
+  }
+  return emailGuides[provider];
+}
+
+export function parseEmail(value: unknown): Parsed<EmailView> {
+  const parsed = safeParse(emailSchema, value);
+  if (!parsed.success) {
+    return fail("O e-mail veio ilegível.");
+  }
+  const item = parsed.output;
+  const view: EmailView = {
+    provider: item.provider ?? "",
+    fromAddress: item.from_address ?? "",
+    toAddress: item.to_address ?? "",
+    accountRef: item.account_ref ?? "",
+    active: item.active,
+    secretPresent: item.secret_present,
+  };
+  if (presentString(item.last_status)) {
+    view.lastStatus = item.last_status;
+  }
+  if (presentString(item.last_detail)) {
+    view.lastDetail = item.last_detail;
+  }
+  return { ok: true, value: view };
+}
 
 const loginProviderSchema = object({
   provider: loginNameSchema,

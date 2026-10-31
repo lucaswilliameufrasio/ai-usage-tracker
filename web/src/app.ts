@@ -54,6 +54,14 @@ import {
   type WindowView,
   type SubscriptionView,
 } from "./view.ts";
+import {
+  applyTheme,
+  bindSystemTheme,
+  prefersDark,
+  readThemeChoice,
+  themeStorageKey,
+  type ThemeChoice,
+} from "./theme.ts";
 
 type ScreenState =
   | { type: "signed-out" }
@@ -89,6 +97,7 @@ type PageState =
 
 type AppState = {
   token: string;
+  theme: ThemeChoice;
   screen: ScreenState;
   loginChoices: string[];
   overlay: OverlayState;
@@ -104,6 +113,7 @@ export function start(root: HTMLElement): void {
   }
   const state: AppState = {
     token: view.localStorage.getItem(operatorTokenKey) ?? "",
+    theme: readThemeChoice(view.localStorage),
     screen: { type: "signed-out" },
     loginChoices: [],
     overlay: { type: "none" },
@@ -111,6 +121,8 @@ export function start(root: HTMLElement): void {
     notice: "",
     loadId: 0,
   };
+  applyTheme(view.document, state.theme, prefersDark(view));
+  bindSystemTheme(view, () => state.theme);
   if (new URLSearchParams(view.location.search).get("login") === "falha") {
     state.notice = "O login não foi concluído.";
   }
@@ -159,6 +171,7 @@ async function enterAsPerson(view: Window, state: AppState, paint: () => void): 
 
 function render(root: HTMLElement, view: Window, state: AppState): void {
   const doc = root.ownerDocument;
+  applyTheme(doc, state.theme, prefersDark(view));
   root.replaceChildren();
   if (state.screen.type === "signed-out") {
     root.append(signedOut(doc, view, state, () => render(root, view, state)));
@@ -210,9 +223,12 @@ function render(root: HTMLElement, view: Window, state: AppState): void {
 function signedOut(doc: Document, view: Window, state: AppState, paint: () => void): HTMLElement {
   const section = doc.createElement("section");
   section.className = "gate";
-  section.append(el(doc, "p", "mark", "Uso"));
-  section.append(el(doc, "h1", "gate-title", "Ver o uso"));
-  section.append(el(doc, "p", "lede", "O agente fica na sua máquina. Quem tem conta entra pelo provedor configurado. O token fica só com o administrador."));
+  const panel = doc.createElement("div");
+  panel.className = "gate-panel";
+  panel.append(el(doc, "p", "mark", "Uso"));
+  panel.append(themeControl(doc, view, state, paint));
+  panel.append(el(doc, "h1", "gate-title", "Ver o uso"));
+  panel.append(el(doc, "p", "lede", "O agente fica na sua máquina. Quem tem conta entra pelo provedor configurado. O token fica só com o administrador."));
   if (state.loginChoices.length > 0) {
     const choices = doc.createElement("div");
     choices.className = "choices";
@@ -223,10 +239,10 @@ function signedOut(doc: Document, view: Window, state: AppState, paint: () => vo
       anchor.textContent = `Entrar com ${loginLabel(provider)}`;
       choices.append(anchor);
     }
-    section.append(choices);
+    panel.append(choices);
   }
   if (state.notice !== "") {
-    section.append(note(doc, state.notice, "notice"));
+    panel.append(note(doc, state.notice, "notice"));
   }
   const form = doc.createElement("form");
   form.className = "stack";
@@ -270,7 +286,8 @@ function signedOut(doc: Document, view: Window, state: AppState, paint: () => vo
   const summary = doc.createElement("summary");
   summary.textContent = "Sou o administrador";
   admin.append(summary, form, create);
-  section.append(admin);
+  panel.append(admin);
+  section.append(panel);
   return section;
 }
 
@@ -303,8 +320,66 @@ function topbar(doc: Document, view: Window, state: AppState, paint: () => void)
   for (const [route, label] of pages) {
     nav.append(screenLink(doc, view, state, paint, route, label));
   }
-  header.append(brandline, nav);
+  header.append(brandline, nav, themeControl(doc, view, state, paint));
   return header;
+}
+
+function themeControl(doc: Document, view: Window, state: AppState, paint: () => void): HTMLElement {
+  const group = doc.createElement("div");
+  group.className = "theme";
+  group.setAttribute("role", "radiogroup");
+  group.setAttribute("aria-labelledby", "theme-label");
+  const legend = el(doc, "p", "theme-label", "Tema");
+  legend.id = "theme-label";
+  group.append(legend);
+  const choices: Array<[ThemeChoice, string]> = [
+    ["system", "Dispositivo"],
+    ["light", "Claro"],
+    ["dark", "Escuro"],
+  ];
+  for (const [choice, label] of choices) {
+    const option = button(doc, label, "theme-option");
+    option.setAttribute("role", "radio");
+    const selected = state.theme === choice;
+    option.setAttribute("aria-checked", selected ? "true" : "false");
+    option.tabIndex = selected ? 0 : -1;
+    option.addEventListener("click", () => {
+      chooseTheme(doc, view, state, choice, paint);
+    });
+    option.addEventListener("keydown", (event) => {
+      const forward = event.key === "ArrowRight" || event.key === "ArrowDown";
+      const backward = event.key === "ArrowLeft" || event.key === "ArrowUp";
+      if (!forward && !backward) {
+        return;
+      }
+      event.preventDefault();
+      const index = choices.findIndex(([item]) => item === state.theme);
+      const step = forward ? 1 : -1;
+      const next = choices[(index + step + choices.length) % choices.length];
+      if (next === undefined) {
+        return;
+      }
+      chooseTheme(doc, view, state, next[0], paint);
+    });
+    group.append(option);
+  }
+  return group;
+}
+
+function chooseTheme(doc: Document, view: Window, state: AppState, choice: ThemeChoice, paint: () => void): void {
+  state.theme = choice;
+  try {
+    view.localStorage.setItem(themeStorageKey, choice);
+  } catch {
+    // A escolha vale nesta visita mesmo se o navegador recusar gravar.
+  }
+  applyTheme(doc, choice, prefersDark(view));
+  paint();
+  const realm = doc.defaultView;
+  const selected = doc.querySelector(".theme [aria-checked='true']");
+  if (realm !== null && selected instanceof realm.HTMLElement) {
+    selected.focus();
+  }
 }
 
 async function signOut(view: Window, state: AppState, paint: () => void): Promise<void> {

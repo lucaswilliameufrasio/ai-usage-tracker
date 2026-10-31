@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -52,8 +52,8 @@ async function main(): Promise<void> {
   });
   try {
     await waitHealth(origin);
-    await exercise(origin, work, agentBin);
-    await shootGate(origin);
+    const pages = await exercise(origin, work, agentBin);
+    await shootGate(origin, pages);
     process.stdout.write("jornada da interface ok\n");
   } catch (error) {
     const message = error instanceof Error ? error.message : "falha na jornada";
@@ -67,7 +67,7 @@ async function main(): Promise<void> {
   }
 }
 
-async function exercise(origin: string, work: string, agentBin: string): Promise<void> {
+async function exercise(origin: string, work: string, agentBin: string): Promise<{ gate: string; reading: string }> {
   const dom = new JSDOM(`<!doctype html><html><body><div id="app"></div></body></html>`, {
     url: `${origin}/`,
     pretendToBeVisual: true,
@@ -79,6 +79,7 @@ async function exercise(origin: string, work: string, agentBin: string): Promise
   }
   const app = await import("../src/app.ts");
   app.start(root);
+  const gate = root.innerHTML;
   click(root, "[data-action='create-setup']");
   await waitFor(root, (text) => text.includes("Contas") && text.includes("Nenhuma conta com dispositivo."), "visão vazia");
   click(root, "[data-action='close-overlay']");
@@ -114,6 +115,7 @@ async function exercise(origin: string, work: string, agentBin: string): Promise
   click(root, "[data-action='close-overlay']");
   await openScreen(view, root, "/", "overview");
   await waitFor(root, (text) => text.includes("86%") && text.includes("25%"), "percentuais na visão");
+  const reading = root.innerHTML;
   const operator = view.localStorage.getItem("tracker.operator_token") ?? "";
   if (operator === "") {
     throw new Error("token do operador ausente no navegador");
@@ -185,21 +187,61 @@ async function exercise(origin: string, work: string, agentBin: string): Promise
     globalThis.fetch = liveFetch;
   }
   dom.window.close();
+  return { gate, reading };
 }
 
-async function shootGate(origin: string): Promise<void> {
+async function shootGate(origin: string, pages: { gate: string; reading: string }): Promise<void> {
   const firefox = process.env.FIREFOX_BIN ?? "firefox";
-  const image = path.join(tmpdir(), "tracker-gate.png");
+  const previews = [
+    path.join(webRoot, "dist", "preview-reading.html"),
+    path.join(webRoot, "dist", "preview-reading-dark.html"),
+    path.join(webRoot, "dist", "preview-gate-dark.html"),
+  ];
   try {
-    const result = await command(firefox, ["--headless", "--screenshot", image, "--window-size=1280,900", origin], 20000);
-    if (result.code !== 0) {
-      process.stdout.write("firefox não concluiu a captura da tela inicial\n");
-      return;
+    await writePreview(previews[0] ?? "", pages.reading, "light");
+    await writePreview(previews[1] ?? "", pages.reading, "dark");
+    await writePreview(previews[2] ?? "", pages.gate, "dark");
+    const shots: Array<[string, string, number]> = [
+      [path.join(tmpdir(), "tracker-gate.png"), origin, 1280],
+      [path.join(tmpdir(), "tracker-gate-dark.png"), `${origin}/preview-gate-dark.html`, 1280],
+      [path.join(tmpdir(), "tracker-reading.png"), `${origin}/preview-reading.html`, 1280],
+      [path.join(tmpdir(), "tracker-reading-dark.png"), `${origin}/preview-reading-dark.html`, 1280],
+      [path.join(tmpdir(), "tracker-reading-dark-mobile.png"), `${origin}/preview-reading-dark.html`, 390],
+    ];
+    for (const [image, url, width] of shots) {
+      const height = width === 390 ? 844 : 900;
+      const result = await command(
+        firefox,
+        ["--headless", "--screenshot", image, `--window-size=${width},${height}`, url],
+        20000,
+      );
+      if (result.code !== 0) {
+        process.stdout.write("firefox não concluiu a captura da tela inicial\n");
+        return;
+      }
     }
     process.stdout.write("firefox capturou a tela inicial\n");
   } catch {
     process.stdout.write("firefox não pôde abrir a tela inicial\n");
+  } finally {
+    for (const file of previews) {
+      await rm(file, { force: true });
+    }
   }
+}
+
+async function writePreview(file: string, body: string, theme: "light" | "dark"): Promise<void> {
+  const index = await readFile(path.join(webRoot, "dist", "index.html"), "utf8");
+  const css = index.match(/href="([^"]+\.css)"/);
+  const script = index.match(/<script>[\s\S]*?<\/script>/);
+  if (css === null || css[1] === undefined || script === null) {
+    throw new Error("css do build ausente");
+  }
+  const boot = theme === "light" ? script[0] : "";
+  const attr = theme === "dark" ? ' data-theme="dark" style="color-scheme: dark"' : "";
+  const color = theme === "dark" ? "#0e141b" : "#e7edf2";
+  const page = `<!doctype html><html lang="pt-BR"${attr}><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="${color}">${boot}<link rel="stylesheet" href="${css[1]}"></head><body><div id="app">${body}</div></body></html>`;
+  await writeFile(file, page);
 }
 
 async function openScreen(view: Window, root: HTMLElement, path: string, route: string): Promise<void> {

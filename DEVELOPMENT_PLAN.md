@@ -1,6 +1,6 @@
 # Plano de desenvolvimento — Rastreador de uso de IA
 
-**Status:** MVP pessoal validado em 2026-10-30. Conta, sessão e retorno do login estão no código, em `docs/adr/0008-sessao-e-retorno-do-login.md`. O template do Sabiá se edita em Acesso (ADR 0019). A atualização do agente é opt-in (ADR 0020). As datas do PWA usam o fuso do dispositivo (ADR 0021). O Antigravity, quando ligado no setup, é lido pelo comando `agy` (ADR 0022). A pessoa confirmou esse coletor nesta máquina. Cada janela do cartão e do histórico tem a própria régua (ADR 0023). O e-mail da instalação sai por Resend, MillionSend, Cloudflare Email ou Amazon SES, com a chave no cofre próprio (ADR 0024). A primeira release do agente é a tag `v0.1.0`. A `v0.2.0` instala o comando `ai-usage` (ADR 0025). OpenCode e Grok continuam sem coletor. Os cofres externos estão no ADR 0027. A troca não copia segredo já gravado. Termos públicos e cobrança continuam fora. A leitura do painel é a régua, com navegação de produto (ADR 0026). O fuso do dispositivo e a régua por janela continuam valendo. O alerta configurado pede o envio ao Sabiá e um 202 fica na fila de lá, sem confirmar a caixa (ADR 0028).
+**Status:** MVP pessoal validado em 2026-10-30. Conta, sessão e retorno do login estão no código, em `docs/adr/0008-sessao-e-retorno-do-login.md`. O template do Sabiá se edita em Acesso (ADR 0019). A atualização do agente é opt-in (ADR 0020). As datas do PWA usam o fuso do dispositivo (ADR 0021). O Antigravity, quando ligado no setup, é lido pelo comando `agy` (ADR 0022). A pessoa confirmou esse coletor nesta máquina. Cada janela do cartão e do histórico tem a própria régua (ADR 0023). O e-mail da instalação sai por Resend, MillionSend, Cloudflare Email ou Amazon SES, com a chave no cofre próprio (ADR 0024). A primeira release do agente é a tag `v0.1.0`. A `v0.2.0` instala o comando `ai-usage` (ADR 0025). OpenCode e Grok continuam sem coletor. Os cofres externos estão no ADR 0027. A troca não copia segredo já gravado. Termos públicos e cobrança continuam fora. A leitura do painel é a régua, com navegação de produto (ADR 0026). O fuso do dispositivo e a régua por janela continuam valendo. O alerta configurado pede o envio ao Sabiá e um 202 fica na fila de lá, sem confirmar a caixa (ADR 0028). O tema do painel é o do dispositivo, claro ou escuro (ADR 0029).
 
 **Nome do repositório:** funcional/provisório.
 
@@ -148,8 +148,8 @@ Não extrair um serviço de notificações: a decisão de alertar e os adapters 
 
 ## Decisões ainda abertas
 
-- O e-mail da instalação está no ADR 0024. O envio pelo Sabiá está no ADR 0028: HTTP 202 é aceite na fila de lá, não entrega na caixa, e não há consulta de estado final. Continuam sem código: coletor de OpenCode e de Grok, termos públicos e cobrança. Os cofres externos estão no ADR 0027. A leitura do painel está no ADR 0026.
-- Retenção além de manter o histórico, termos do lançamento público e cobrança. A repaginação do painel está no ADR 0026. O fuso do dispositivo já está no ADR 0021.
+- O e-mail da instalação está no ADR 0024. O envio pelo Sabiá está no ADR 0028: HTTP 202 é aceite na fila de lá, não entrega na caixa, e não há consulta de estado final. Continuam sem código: coletor de OpenCode e de Grok, termos públicos e cobrança. Os cofres externos estão no ADR 0027. A leitura do painel está no ADR 0026. O tema dispositivo, claro ou escuro está no ADR 0029.
+- Retenção além de manter o histórico, termos do lançamento público e cobrança. A repaginação do painel está no ADR 0026. O tema está no ADR 0029. O fuso do dispositivo já está no ADR 0021.
 - A leitura ao vivo do Codex ficou no ADR 0015: comando local `codex app-server`, sem o aplicativo CodexBar e sem `auth.json`. O Antigravity usa `agy -p /usage` (ADR 0022). OpenCode e Grok Build ainda não têm comando local de percentual e reset que deixe o login com o CLI.
 - Não há cache de segredo. Com o backend indisponível, a função que depende dele fecha (ADR 0007). Web Push é o adapter estreito deste app (ADR 0004).
 
@@ -157,7 +157,7 @@ Não extrair um serviço de notificações: a decisão de alertar e os adapters 
 
 A fatia 1 fechou, para o uso pessoal, a stack, as fontes locais, o contrato da amostra e o Web Push estreito. Ver `docs/adr/0001-stack-do-mvp-pessoal.md`, `docs/adr/0002-fontes-locais-claude-codex.md`, `docs/adr/0003-amostra-dispositivo-e-historico.md`, `docs/adr/0004-web-push-estreito.md` e `docs/source-inspection.md`.
 
-Continuam abertas: retenção além de manter o histórico, termos do lançamento público e cobrança. O e-mail da instalação está no ADR 0024. O envio pelo Sabiá grava o 202 como aceite na fila (ADR 0028). A repaginação do painel está no ADR 0026. Não há cache de segredo. O aplicativo CodexBar não é fonte. A leitura ao vivo usa o `codex app-server` local (ADR 0015). O porto e o cofre próprio estão implementados (ADR 0007). Ciphera, HashiCorp Vault no KV, AWS Secrets Manager e Infisical estão no ADR 0027. A troca não copia um cofre para o outro. O retorno dos quatro provedores e a sessão da pessoa estão implementados (ADR 0008).
+Continuam abertas: retenção além de manter o histórico, termos do lançamento público e cobrança. O e-mail da instalação está no ADR 0024. O envio pelo Sabiá grava o 202 como aceite na fila (ADR 0028). A repaginação do painel está no ADR 0026. O tema está no ADR 0029. Não há cache de segredo. O aplicativo CodexBar não é fonte. A leitura ao vivo usa o `codex app-server` local (ADR 0015). O porto e o cofre próprio estão implementados (ADR 0007). Ciphera, HashiCorp Vault no KV, AWS Secrets Manager e Infisical estão no ADR 0027. A troca não copia um cofre para o outro. O retorno dos quatro provedores e a sessão da pessoa estão implementados (ADR 0008).
 
 ### Validação pessoal — 2026-10-30
 
@@ -171,6 +171,6 @@ OpenCode e Grok Build não foram recusados como produto. A inspeção de 2026-10
 
 ### Release do agente — 2026-10-31
 
-A primeira tag é `v0.1.0`. Ela publica só o agente, o script de instalação e o checksum (ADR 0018). O painel não entra no pacote. Não há release anterior. O contrato HTTP e o esquema ainda mudam, então a versão fica em `0.y.z` em vez de `1.0.0`. Continuam sem código: coletor de OpenCode e de Grok, termos públicos e cobrança. O envio pelo Sabiá grava o 202 como aceite na fila, sem confirmar a caixa (ADR 0028). Os cofres externos estão no ADR 0027. A leitura do painel está no ADR 0026.
+A primeira tag é `v0.1.0`. Ela publica só o agente, o script de instalação e o checksum (ADR 0018). O painel não entra no pacote. Não há release anterior. O contrato HTTP e o esquema ainda mudam, então a versão fica em `0.y.z` em vez de `1.0.0`. Continuam sem código: coletor de OpenCode e de Grok, termos públicos e cobrança. O envio pelo Sabiá grava o 202 como aceite na fila, sem confirmar a caixa (ADR 0028). Os cofres externos estão no ADR 0027. A leitura do painel está no ADR 0026. O tema está no ADR 0029.
 
 A `v0.1.0` gravou o coletor em `~/.local/bin/agent` e cobriu o elo do Grok Build que já estava nesse caminho. O binário em `~/.grok/bin/agent` não foi apagado. A `v0.2.0` instala `ai-usage` e não mexe num arquivo chamado `agent` (ADR 0025).

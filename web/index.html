@@ -3,8 +3,37 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#f3f5f2">
+    <meta name="theme-color" content="#e7edf2">
     <title>Rastreador de uso</title>
+    <script>
+      (function () {
+        var key = "ai-usage-theme";
+        var choice = "system";
+        try {
+          var stored = localStorage.getItem(key);
+          if (stored === "light" || stored === "dark" || stored === "system") {
+            choice = stored;
+          }
+        } catch (error) {
+          choice = "system";
+        }
+        var systemIsDark = false;
+        try {
+          systemIsDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+        } catch (error) {
+          systemIsDark = false;
+        }
+        var resolved = choice === "dark" || (choice === "system" && systemIsDark) ? "dark" : "light";
+        var root = document.documentElement;
+        root.setAttribute("data-theme", resolved);
+        root.setAttribute("data-theme-choice", choice);
+        root.style.colorScheme = resolved;
+        var meta = document.querySelector("meta[name='theme-color']");
+        if (meta) {
+          meta.setAttribute("content", resolved === "dark" ? "#0e141b" : "#e7edf2");
+        }
+      })();
+    </script>
     <link rel="manifest" href="/manifest.webmanifest">
     <link rel="icon" href="/icon-192.png">
     <link rel="apple-touch-icon" href="/icon-192.png">

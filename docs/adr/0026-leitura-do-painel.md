@@ -2,6 +2,7 @@
 
 - Status: aceito
 - Data: 2026-10-31
+- Atualização 2026-10-31: a superfície e o tema dispositivo, claro ou escuro estão no ADR 0029. O texto abaixo registra a leitura e a navegação.
 - Relacionado: ADR 0009, ADR 0021, ADR 0023
 
 ## Contexto

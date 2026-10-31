@@ -29,6 +29,7 @@ var (
 	ErrInvalidKey  = errors.New("vault: chave")
 	ErrTooLarge    = errors.New("vault: tamanho")
 	ErrSealed      = errors.New("vault: selo")
+	ErrUnavailable = errors.New("vault: indisponível")
 )
 
 var namePattern = regexp.MustCompile(`^[a-z][a-z0-9._-]{0,80}$`)

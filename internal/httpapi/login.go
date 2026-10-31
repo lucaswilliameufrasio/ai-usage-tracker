@@ -21,7 +21,7 @@ func (s *Server) flow() *login.Flow {
 	}
 	return &login.Flow{
 		Store: s.Store,
-		Vault: s.Vault,
+		Vault: s.activeVault(),
 		Ends:  login.Production(),
 		Now:   s.Now,
 	}
@@ -29,11 +29,12 @@ func (s *Server) flow() *login.Flow {
 
 func (s *Server) publicLogins(w http.ResponseWriter, r *http.Request) {
 	data := make([]map[string]string, 0)
-	if s.Vault == nil {
+	box := s.activeVault()
+	if box == nil {
 		writeJSON(w, http.StatusOK, map[string]any{"data": data})
 		return
 	}
-	views, err := access.Catalog(r.Context(), s.Store, s.Vault)
+	views, err := access.Catalog(r.Context(), s.Store, box)
 	if err != nil {
 		if errors.Is(err, vault.ErrSealed) {
 			apierr.Write(w, apierr.New(http.StatusInternalServerError, apierr.CodeVaultUnavailable, "O cofre próprio não pôde ser lido."))

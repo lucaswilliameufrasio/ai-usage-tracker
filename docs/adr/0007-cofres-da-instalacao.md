@@ -2,6 +2,7 @@
 
 - Status: aceito
 - Data: 2026-10-30
+- Atualização 2026-10-31: os quatro adapters externos estão no ADR 0027. O texto abaixo registra a decisão original.
 - Substitui: a frase do ADR 0006 que nomeia o Ciphera como a implementação do porto de segredo, e a consequência que trata o cofre local como espera pelo Ciphera. O restante do ADR 0006 permanece.
 
 ## Contexto

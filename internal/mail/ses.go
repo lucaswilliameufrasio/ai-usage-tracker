@@ -3,14 +3,12 @@ package mail
 import (
 	"bytes"
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net/http"
-	"sort"
 	"strings"
+
+	"ai-usage-tracker/internal/awsig"
 )
 
 func (c *Client) postSES(ctx context.Context, region string, creds Credentials, msg Message) error {
@@ -44,7 +42,7 @@ func (c *Client) postSES(ctx context.Context, region string, creds Credentials, 
 	amzDate := c.clock().Format("20060102T150405Z")
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Amz-Date", amzDate)
-	authorization := signV4(req.Method, req.URL.EscapedPath(), req.URL.RawQuery, req.Host, amzDate, region, "ses", creds.AccessKeyID, creds.SecretAccessKey, raw, map[string]string{
+	authorization := awsig.Sign(req.Method, req.URL.EscapedPath(), req.URL.RawQuery, req.Host, amzDate, region, "ses", creds.AccessKeyID, creds.SecretAccessKey, raw, map[string]string{
 		"content-type": "application/json",
 		"host":         req.Host,
 		"x-amz-date":   amzDate,
@@ -72,47 +70,5 @@ func (c *Client) postSES(ctx context.Context, region string, creds Credentials, 
 }
 
 func signV4(method string, path string, query string, host string, amzDate string, region string, service string, accessKey string, secret string, payload []byte, headers map[string]string) string {
-	names := make([]string, 0, len(headers))
-	for name := range headers {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	var canonicalHeaders strings.Builder
-	for _, name := range names {
-		canonicalHeaders.WriteString(name)
-		canonicalHeaders.WriteByte(':')
-		canonicalHeaders.WriteString(strings.TrimSpace(headers[name]))
-		canonicalHeaders.WriteByte('\n')
-	}
-	signed := strings.Join(names, ";")
-	sum := sha256.Sum256(payload)
-	canonical := strings.Join([]string{
-		method,
-		path,
-		query,
-		canonicalHeaders.String(),
-		signed,
-		hex.EncodeToString(sum[:]),
-	}, "\n")
-	date := amzDate[:8]
-	scope := date + "/" + region + "/" + service + "/aws4_request"
-	requestHash := sha256.Sum256([]byte(canonical))
-	toSign := strings.Join([]string{
-		"AWS4-HMAC-SHA256",
-		amzDate,
-		scope,
-		hex.EncodeToString(requestHash[:]),
-	}, "\n")
-	key := hmacSHA256([]byte("AWS4"+secret), date)
-	key = hmacSHA256(key, region)
-	key = hmacSHA256(key, service)
-	key = hmacSHA256(key, "aws4_request")
-	signature := hex.EncodeToString(hmacSHA256(key, toSign))
-	return "AWS4-HMAC-SHA256 Credential=" + accessKey + "/" + scope + ", SignedHeaders=" + signed + ", Signature=" + signature
-}
-
-func hmacSHA256(key []byte, value string) []byte {
-	mac := hmac.New(sha256.New, key)
-	_, _ = mac.Write([]byte(value))
-	return mac.Sum(nil)
+	return awsig.Sign(method, path, query, host, amzDate, region, service, accessKey, secret, payload, headers)
 }

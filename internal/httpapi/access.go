@@ -1,12 +1,16 @@
 package httpapi
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"ai-usage-tracker/internal/access"
 	"ai-usage-tracker/internal/apierr"
+	"ai-usage-tracker/internal/mail"
+	"ai-usage-tracker/internal/sabia"
 	"ai-usage-tracker/internal/store"
 	"ai-usage-tracker/internal/vault"
 )
@@ -26,10 +30,17 @@ func (s *Server) putSecretBackend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	kind := strings.TrimSpace(body.Kind)
-	if kind != access.BackendOwn {
+	if !access.KnownBackend(kind) {
 		apierr.Write(w, apierr.Invalid([]apierr.FieldError{{
 			Field:   "kind",
-			Message: "Só o cofre próprio está disponível nesta versão.",
+			Message: "Cofre desconhecido.",
+		}}))
+		return
+	}
+	if s.boxFor(kind) == nil {
+		apierr.Write(w, apierr.Invalid([]apierr.FieldError{{
+			Field:   "kind",
+			Message: "Este cofre não está aberto neste processo.",
 		}}))
 		return
 	}
@@ -38,12 +49,25 @@ func (s *Server) putSecretBackend(w http.ResponseWriter, r *http.Request) {
 		apierr.Write(w, err)
 		return
 	}
-	if current != access.BackendOwn {
-		apierr.Write(w, apierr.Invalid([]apierr.FieldError{{
-			Field:   "kind",
-			Message: "A troca de cofre ainda não está disponível.",
-		}}))
-		return
+	if current != kind {
+		currentBox := s.boxFor(current)
+		if currentBox == nil {
+			apierr.Write(w, apierr.New(http.StatusConflict, apierr.CodeVaultSwitch, "O cofre atual não está aberto, então a troca não dá para conferir."))
+			return
+		}
+		occupied, occupyErr := backendOccupied(r.Context(), currentBox)
+		if occupyErr != nil {
+			s.writeAccess(w, occupyErr)
+			return
+		}
+		if occupied {
+			apierr.Write(w, apierr.New(http.StatusConflict, apierr.CodeVaultSwitch, "Já existe segredo neste cofre. A troca é uma migração e esta versão não copia sozinha."))
+			return
+		}
+		if err := s.Store.SetSecretBackend(kind); err != nil {
+			apierr.Write(w, err)
+			return
+		}
 	}
 	s.writeBackend(w)
 }
@@ -162,7 +186,14 @@ func (s *Server) writeBackend(w http.ResponseWriter) {
 		apierr.Write(w, err)
 		return
 	}
-	ready := kind == access.BackendOwn && s.Vault != nil
+	box := s.boxFor(kind)
+	ready := false
+	if box != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		_, err = box.Present(ctx, access.SecretRef(access.GitHub))
+		ready = err == nil
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"kind":  kind,
 		"ready": ready,
@@ -170,14 +201,53 @@ func (s *Server) writeBackend(w http.ResponseWriter) {
 }
 
 func (s *Server) openVault() (vault.Box, error) {
-	kind, err := s.Store.SecretBackend()
-	if err != nil {
-		return nil, err
-	}
-	if kind != access.BackendOwn || s.Vault == nil {
+	box := s.activeVault()
+	if box == nil {
 		return nil, errVaultClosed
 	}
-	return s.Vault, nil
+	return box, nil
+}
+
+func (s *Server) activeVault() vault.Box {
+	if s.Store == nil {
+		return s.Vault
+	}
+	kind, err := s.Store.SecretBackend()
+	if err != nil || !access.KnownBackend(kind) {
+		return nil
+	}
+	return s.boxFor(kind)
+}
+
+func (s *Server) boxFor(kind string) vault.Box {
+	if s.Vaults != nil {
+		return s.Vaults[kind]
+	}
+	if kind == access.BackendOwn {
+		return s.Vault
+	}
+	return nil
+}
+
+func backendOccupied(ctx context.Context, box vault.Box) (bool, error) {
+	names := []string{
+		access.SecretRef(access.GitHub),
+		access.SecretRef(access.Gitea),
+		access.SecretRef(access.Google),
+		access.SecretRef(access.Apple),
+		mail.SecretName,
+		sabia.DeploySecret,
+	}
+	for _, name := range names {
+		present, err := box.Present(ctx, name)
+		if err != nil {
+			return false, err
+		}
+		if present {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (s *Server) writeAccess(w http.ResponseWriter, err error) {
@@ -193,6 +263,8 @@ func (s *Server) writeAccess(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, errVaultClosed):
 		apierr.Write(w, apierr.New(http.StatusPreconditionFailed, apierr.CodeVaultUnavailable, "O cofre próprio não está aberto."))
+	case errors.Is(err, vault.ErrUnavailable):
+		apierr.Write(w, apierr.New(http.StatusPreconditionFailed, apierr.CodeVaultUnavailable, "O cofre não respondeu."))
 	case errors.Is(err, vault.ErrSealed):
 		apierr.Write(w, apierr.New(http.StatusInternalServerError, apierr.CodeVaultUnavailable, "O cofre próprio não pôde ser lido."))
 	case errors.Is(err, store.ErrLastLogin):

@@ -11,7 +11,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strings"
 	"syscall"
 	"time"
 
@@ -51,24 +50,13 @@ func main() {
 		os.Exit(1)
 	}
 	loginEnv := access.ReadEnv(os.Getenv)
-	var box vault.Box
-	rawKey := strings.TrimSpace(os.Getenv("TRACKER_VAULT_KEY"))
-	if rawKey != "" {
-		key, err := vault.DecodeKey(rawKey)
-		if err != nil {
-			logger.Error("cofre", "err", "chave")
-			os.Exit(1)
-		}
-		opened, err := vault.OpenOwn(filepath.Join(*data, "vault"), key)
-		for i := range key {
-			key[i] = 0
-		}
-		if err != nil {
-			logger.Error("cofre", "err", "abrir")
-			os.Exit(1)
-		}
-		box = opened
+	boxes := vault.OpenConfigured(os.Getenv, *data)
+	kind, err := db.SecretBackend()
+	if err != nil {
+		logger.Error("cofre", "err", "backend")
+		os.Exit(1)
 	}
+	box := boxes[kind]
 	if access.EnvTouched(loginEnv) {
 		if box == nil {
 			logger.Error("login", "err", "cofre fechado")
@@ -91,6 +79,7 @@ func main() {
 		WebDir:         *web,
 		Logger:         logger,
 		Vault:          box,
+		Vaults:         boxes,
 	}
 	httpServer := &http.Server{
 		Addr:              *addr,

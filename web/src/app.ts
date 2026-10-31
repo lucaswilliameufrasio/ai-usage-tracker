@@ -687,6 +687,7 @@ function accessView(doc: Document, view: Window, state: AppState, paint: () => v
   const page = state.page.route === "access" ? state.page : { route: "access" as const, providers: [], problem: "" };
   const wrap = doc.createElement("section");
   wrap.append(pageHead(doc, "Acesso", "O administrador configura o login. O segredo entra no cofre e não volta para esta tela. Quem entra por um provedor configurado vê o próprio uso. Esta tela continua só com o administrador."));
+  wrap.append(el(doc, "p", "meta", "O token que abre o cofre fica na configuração do processo, não nesta tela. Trocar de cofre só vale quando esse processo já abre o destino e ainda não há segredo gravado."));
   if (page.backend !== undefined) {
     wrap.append(el(doc, "p", "", backendCopy(page.backend)));
   }
@@ -1060,7 +1061,27 @@ function backendCopy(backend: SecretBackendView): string {
   if (backend.kind === "own") {
     return "O cofre próprio não está aberto.";
   }
-  return "Este backend de cofre ainda não está disponível nesta versão.";
+  const label = backendLabel(backend.kind);
+  if (backend.ready) {
+    return `${label} aberto. A leitura respondeu.`;
+  }
+  return `${label} não está aberto neste processo.`;
+}
+
+function backendLabel(kind: string): string {
+  if (kind === "ciphera") {
+    return "Ciphera";
+  }
+  if (kind === "hashicorp") {
+    return "HashiCorp Vault";
+  }
+  if (kind === "aws") {
+    return "AWS Secrets Manager";
+  }
+  if (kind === "infisical") {
+    return "Infisical";
+  }
+  return "Cofre";
 }
 
 async function loadAccess(view: Window, state: AppState, paint: () => void): Promise<void> {

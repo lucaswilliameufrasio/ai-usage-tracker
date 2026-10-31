@@ -26,6 +26,11 @@ func (s *Store) SecretBackend() (string, error) {
 	return kind, nil
 }
 
+func (s *Store) SetSecretBackend(kind string) error {
+	_, err := s.db.Exec(`UPDATE secret_backend SET kind = ? WHERE id = 1`, kind)
+	return err
+}
+
 func (s *Store) ListLoginProviders() ([]LoginProvider, error) {
 	rows, err := s.db.Query(`SELECT provider, enabled, client_id, issuer_url, team_id, key_id, services_id, secret_ref, updated_at FROM login_providers ORDER BY provider`)
 	if err != nil {

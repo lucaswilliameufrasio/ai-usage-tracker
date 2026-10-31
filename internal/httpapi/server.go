@@ -46,6 +46,7 @@ type Server struct {
 	WebDir         string
 	Logger         *slog.Logger
 	Vault          vault.Box
+	Vaults         map[string]vault.Box
 	Login          *login.Flow
 	SabiaHTTP      *http.Client
 	Mail           *mail.Client

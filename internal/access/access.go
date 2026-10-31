@@ -12,11 +12,15 @@ import (
 )
 
 const (
-	GitHub     = "github"
-	Gitea      = "gitea"
-	Google     = "google"
-	Apple      = "apple"
-	BackendOwn = "own"
+	GitHub           = "github"
+	Gitea            = "gitea"
+	Google           = "google"
+	Apple            = "apple"
+	BackendOwn       = "own"
+	BackendCiphera   = "ciphera"
+	BackendHashicorp = "hashicorp"
+	BackendAWS       = "aws"
+	BackendInfisical = "infisical"
 )
 
 var Providers = []string{GitHub, Gitea, Google, Apple}
@@ -62,6 +66,15 @@ type View struct {
 	ServicesID    string
 	SecretPresent bool
 	UpdatedAt     time.Time
+}
+
+func KnownBackend(kind string) bool {
+	switch kind {
+	case BackendOwn, BackendCiphera, BackendHashicorp, BackendAWS, BackendInfisical:
+		return true
+	default:
+		return false
+	}
 }
 
 func SecretRef(provider string) string {

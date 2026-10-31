@@ -27,6 +27,7 @@ const (
 	CodeSetupRequired     = "SETUP_TOKEN_REQUIRED"
 	CodeLastLogin         = "LAST_LOGIN_METHOD"
 	CodeVaultUnavailable  = "VAULT_UNAVAILABLE"
+	CodeVaultSwitch       = "VAULT_SWITCH_BLOCKED"
 	CodeUpstream          = "UPSTREAM_REJECTED"
 )
 

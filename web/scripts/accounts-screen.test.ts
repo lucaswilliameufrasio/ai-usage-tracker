@@ -60,6 +60,56 @@ describe("medicoes da pessoa", () => {
   });
 });
 
+describe("histórico", () => {
+  it("repete a régua de cada janela", async () => {
+    const previous = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = input instanceof URL ? input.toString() : String(input);
+      if (url.includes("/v1/samples")) {
+        return json({
+          data: [
+            {
+              sample_id: "smp_um",
+              provider: "antigravity",
+              collected_at: "2026-10-30T12:00:00Z",
+              windows: [
+                { name: "gemini_seven_day", used: 50, resets_at: "2026-11-06T15:00:00Z" },
+                { name: "claude_gpt_seven_day", used: 80, resets_at: "2026-11-06T15:00:00Z" },
+              ],
+            },
+          ],
+          has_more: false,
+        });
+      }
+      return json({ message: "não usado" }, 404);
+    }) as typeof fetch;
+    const dom = new JSDOM(`<!doctype html><html><body><div id="app"></div></body></html>`, {
+      url: "http://127.0.0.1:8787/historico",
+      pretendToBeVisual: true,
+    });
+    try {
+      const view = dom.window;
+      view.localStorage.setItem(operatorTokenKey, "op_teste");
+      const root = view.document.querySelector("#app");
+      if (!(root instanceof view.HTMLElement)) {
+        throw new Error("raiz ausente");
+      }
+      const app = await import("../src/app.ts");
+      app.start(root);
+      await waitFor(() => root.querySelector("[data-window='gemini_seven_day'] .staff") !== null, root);
+      const gemini = root.querySelector("[data-window='gemini_seven_day']");
+      const gpt = root.querySelector("[data-window='claude_gpt_seven_day']");
+      assert.equal(gemini?.textContent?.includes("50%"), true);
+      assert.equal(gpt?.textContent?.includes("80%"), true);
+      assert.equal(gemini?.querySelector(".staff") !== null, true);
+      assert.equal(gpt?.querySelector(".staff") !== null, true);
+    } finally {
+      globalThis.fetch = previous;
+      dom.window.close();
+    }
+  });
+});
+
 describe("painel por conta", () => {
   it("mostra cada conta com a própria medição", async () => {
     const previous = globalThis.fetch;

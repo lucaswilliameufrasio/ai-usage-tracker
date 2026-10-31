@@ -223,9 +223,9 @@ h2 { margin: 0; font-size: 1.45rem; }
   padding-left: 1.1rem;
 }
 
-.history li,
-.devices li,
-.deliveries li {
+.history > li,
+.devices > li,
+.deliveries > li {
   margin: 0.9rem 0;
   padding-top: 0.8rem;
   border-top: 1px solid var(--line);

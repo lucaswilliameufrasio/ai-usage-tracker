@@ -10,7 +10,7 @@ O cartão desenhava uma régua vertical por provedor e um número grande para a 
 ## Decisão
 
 - A visão da pessoa se chama "Medições". O operador continua em "Contas".
-- Cada janela tem a própria régua horizontal, o percentual e o horário de reinício. A marca de latão continua em 80%.
+- Cada janela tem a própria régua horizontal, o percentual e o horário de reinício. A marca de latão continua em 80%. O histórico usa a mesma linha.
 - Sem janela, a régua fica vazia e o texto de ausência permanece.
 - O alerta e o frescor no servidor não mudam: a projeção segue preferindo a janela de 5 horas.
 

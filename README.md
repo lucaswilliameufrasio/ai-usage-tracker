@@ -1,6 +1,6 @@
 # Rastreador de uso de IA
 
-O agente lê, na máquina do usuário, o cache ou o status line do Claude, os `rate_limits` dos rollouts do Codex e, se estiver ligado, as janelas do Antigravity pelo comando `agy`. O servidor guarda só percentuais, plano e horários de reset. O PWA mostra visão, histórico, dispositivos e alertas. Cada janela do cartão tem a própria régua (ADR 0023). Quem administra vê uma seção por conta; cada pessoa vê só a própria (ADR 0017).
+O agente lê, na máquina do usuário, o cache ou o status line do Claude, os `rate_limits` dos rollouts do Codex e, se estiver ligado, as janelas do Antigravity pelo comando `agy`. O servidor guarda só percentuais, plano e horários de reset. O PWA mostra visão, histórico, dispositivos e alertas. Cada janela do cartão e do histórico tem a própria régua (ADR 0023). Quem administra vê uma seção por conta; cada pessoa vê só a própria (ADR 0017).
 
 Credenciais de IA, prompts, conversas e caminhos não são enviados. O e-mail BYOK da instalação e os cofres externos estão decididos e ainda sem código. O Sabiá não é dependência do produto público. Em Acesso, esta instalação edita um template e sincroniza com o Sabiá; a chave de deploy não volta para a tela (ADR 0019). Cobrança continua fora. O PWA mostra horários no fuso do dispositivo. O servidor guarda UTC (ADR 0021).
 

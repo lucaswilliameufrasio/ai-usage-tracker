@@ -48,6 +48,7 @@ import {
   type SabiaView,
   type SecretBackendView,
   type SettingsView,
+  type WindowView,
   type SubscriptionView,
 } from "./view.ts";
 
@@ -439,21 +440,7 @@ function providerCard(doc: Document, card: ProviderCard, fromCache: boolean): HT
   if (card.windows.length === 0) {
     text.append(gauge(doc, 0));
   } else {
-    const list = doc.createElement("ul");
-    list.className = "windows";
-    for (const item of card.windows) {
-      const row = doc.createElement("li");
-      row.className = "window";
-      row.dataset.window = item.name;
-      row.append(el(doc, "p", "", windowLabel(item.name)));
-      const figure = el(doc, "p", "figure", `${formatUsed(item.used)}%`);
-      figure.dataset.used = formatUsed(item.used);
-      row.append(figure);
-      row.append(el(doc, "p", "meta", `Reinicia ${formatInstant(item.resetsAt)}`));
-      row.append(gauge(doc, item.used));
-      list.append(row);
-    }
-    text.append(list);
+    text.append(windowRows(doc, card.windows));
   }
   if (card.freshness === "unavailable" && card.windows.length > 0 && !fromCache) {
     text.append(el(doc, "p", "meta", "A última amostra conhecida continua visível. Não é a leitura atual."));
@@ -463,6 +450,24 @@ function providerCard(doc: Document, card: ProviderCard, fromCache: boolean): HT
   }
   article.append(text);
   return article;
+}
+
+function windowRows(doc: Document, windows: WindowView[]): HTMLElement {
+  const list = doc.createElement("ul");
+  list.className = "windows";
+  for (const item of windows) {
+    const row = doc.createElement("li");
+    row.className = "window";
+    row.dataset.window = item.name;
+    row.append(el(doc, "p", "", windowLabel(item.name)));
+    const figure = el(doc, "p", "figure", `${formatUsed(item.used)}%`);
+    figure.dataset.used = formatUsed(item.used);
+    row.append(figure);
+    row.append(el(doc, "p", "meta", `Reinicia ${formatInstant(item.resetsAt)}`));
+    row.append(gauge(doc, item.used));
+    list.append(row);
+  }
+  return list;
 }
 
 function gauge(doc: Document, used: number): HTMLElement {
@@ -501,13 +506,9 @@ function historyView(doc: Document, view: Window, state: AppState, paint: () => 
     if (sample.plan !== undefined && sample.plan !== "") {
       item.append(el(doc, "p", "meta", `Plano ${sample.plan}.`));
     }
-    const windows = doc.createElement("ul");
-    for (const window of sample.windows) {
-      const row = doc.createElement("li");
-      row.textContent = `${windowLabel(window.name)}: ${formatUsed(window.used)}% · reinicia ${formatInstant(window.resetsAt)}`;
-      windows.append(row);
+    if (sample.windows.length > 0) {
+      item.append(windowRows(doc, sample.windows));
     }
-    item.append(windows);
     list.append(item);
   }
   wrap.append(list);

@@ -2,6 +2,7 @@
 
 - Status: aceito
 - Data: 2026-10-31
+- Atualização 2026-10-31: a primeira tela ainda esticava a régua na janela larga. A leitura passou a ter coluna máxima, painel próprio e a régua como canal.
 - Relacionado: ADR 0026
 
 ## Contexto
@@ -12,9 +13,9 @@ A busca de sistema visual da ferramenta devolveu modo escuro OLED, índigo `#433
 
 ## Decisão
 
-- A referência de estrutura é o redesenho do Linear de 2024: trilho lateral, densidade, tema claro e escuro tratados como duas escalas de superfície, acento só na ação, no foco e na seleção, separação por fio e não por sombra. A descrição pública está em <https://linear.app/now/how-we-redesigned-the-linear-ui>.
-- A referência do campo claro é o painel da Stripe: canvas frio, superfície branca, fio fino, tinta azul-marinho e número tabular. O painel web da Stripe não nasceu com tema escuro. O escuro daqui não inverte o claro: a superfície sobe de luminância e o acento clareia, no mesmo princípio do Linear.
-- O acento não é o índigo do Linear nem o violeta da Stripe. Continua verde de instrumento, porque o assunto da tela é a régua de uso.
+- A leitura fica numa coluna de no máximo 62rem, dentro de um painel. A régua é um canal nesse painel e não cresce com a janela. O nome da janela fica ao lado; o percentual, o reinício e a régua ocupam a largura do painel. O controle de tema fica junto da navegação, não no fundo de um trilho vazio. O estado da leitura fica na mesma linha do provedor.
+- Claro e escuro são duas escalas de superfície: o fundo é mais fundo que o painel. O trilho usa o fundo. O acento continua verde e aparece na régua, na ação principal, no foco e na seção selecionada.
+- A busca automática devolveu um kit de marketing, com índigo, violeta, Inter e uma página de apresentação. Fica rejeitado.
 - Não há fonte baixada de uma CDN. A família é a do sistema.
 - A escolha é um único valor: `system`, `light` ou `dark`. O padrão é `system`, lido de `prefers-color-scheme`. Fica em `localStorage` na chave `ai-usage-theme`, por navegador, não por conta.
 - O script no `index.html` aplica a escolha antes da pintura. O controle, com o nome visível "Tema" e as opções "Dispositivo", "Claro" e "Escuro", aparece no portão e no trilho. Não entra na barra de seções. Sair continua fora dessa barra.

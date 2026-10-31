@@ -204,12 +204,12 @@ async function shootGate(origin: string, pages: { gate: string; reading: string 
     const shots: Array<[string, string, number]> = [
       [path.join(tmpdir(), "tracker-gate.png"), origin, 1280],
       [path.join(tmpdir(), "tracker-gate-dark.png"), `${origin}/preview-gate-dark.html`, 1280],
-      [path.join(tmpdir(), "tracker-reading.png"), `${origin}/preview-reading.html`, 1280],
-      [path.join(tmpdir(), "tracker-reading-dark.png"), `${origin}/preview-reading-dark.html`, 1280],
+      [path.join(tmpdir(), "tracker-reading.png"), `${origin}/preview-reading.html`, 1680],
+      [path.join(tmpdir(), "tracker-reading-dark.png"), `${origin}/preview-reading-dark.html`, 1680],
       [path.join(tmpdir(), "tracker-reading-dark-mobile.png"), `${origin}/preview-reading-dark.html`, 390],
     ];
     for (const [image, url, width] of shots) {
-      const height = width === 390 ? 844 : 900;
+      const height = width === 390 ? 844 : width >= 1600 ? 1000 : 900;
       const result = await command(
         firefox,
         ["--headless", "--screenshot", image, `--window-size=${width},${height}`, url],
@@ -237,10 +237,11 @@ async function writePreview(file: string, body: string, theme: "light" | "dark")
   if (css === null || css[1] === undefined || script === null) {
     throw new Error("css do build ausente");
   }
-  const boot = theme === "light" ? script[0] : "";
-  const attr = theme === "dark" ? ' data-theme="dark" style="color-scheme: dark"' : "";
-  const color = theme === "dark" ? "#0e141b" : "#e7edf2";
-  const page = `<!doctype html><html lang="pt-BR"${attr}><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="${color}">${boot}<link rel="stylesheet" href="${css[1]}"></head><body><div id="app">${body}</div></body></html>`;
+  const attr = theme === "dark"
+    ? ' data-theme="dark" style="color-scheme: dark"'
+    : ' data-theme="light" style="color-scheme: light"';
+  const color = theme === "dark" ? "#070a0e" : "#d7e0ea";
+  const page = `<!doctype html><html lang="pt-BR"${attr}><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="${color}"><link rel="stylesheet" href="${css[1]}"></head><body><div id="app">${body}</div></body></html>`;
   await writeFile(file, page);
 }
 

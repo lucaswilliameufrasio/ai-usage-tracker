@@ -518,6 +518,7 @@ function providerCard(doc: Document, card: ProviderCard, fromCache: boolean): HT
   const article = doc.createElement("article");
   article.className = "provider";
   article.dataset.provider = card.provider;
+  article.dataset.freshness = fromCache ? "cached" : card.freshness;
   const copy = readingCopy(card.freshness, card.observedAt, card.reasonCode, fromCache);
   const text = doc.createElement("div");
   text.className = "provider-copy";

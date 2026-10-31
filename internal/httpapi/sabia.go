@@ -2,15 +2,19 @@ package httpapi
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
+	"ai-usage-tracker/internal/alert"
 	"ai-usage-tracker/internal/apierr"
 	"ai-usage-tracker/internal/sabia"
 	"ai-usage-tracker/internal/store"
+	"ai-usage-tracker/internal/token"
 	"ai-usage-tracker/internal/vault"
 )
 
@@ -33,6 +37,8 @@ func (s *Server) putSabia(w http.ResponseWriter, r *http.Request) {
 		Origin        *string `json:"origin"`
 		ApplicationID *string `json:"application_id"`
 		DeployKey     *string `json:"deploy_key"`
+		SendKey       *string `json:"send_key"`
+		Recipient     *string `json:"recipient"`
 		Template      *struct {
 			Name    string `json:"name"`
 			Subject string `json:"subject"`
@@ -51,6 +57,7 @@ func (s *Server) putSabia(w http.ResponseWriter, r *http.Request) {
 	}
 	origin := link.Origin
 	applicationID := link.ApplicationID
+	recipient := link.Recipient
 	var fields []apierr.FieldError
 	if body.Origin != nil {
 		raw := strings.TrimSpace(*body.Origin)
@@ -96,12 +103,29 @@ func (s *Server) putSabia(w http.ResponseWriter, r *http.Request) {
 			fields = append(fields, apierr.FieldError{Field: "deploy_key", Message: "A chave passa de 8 KiB."})
 		}
 	}
+	sendKey := ""
+	if body.SendKey != nil {
+		sendKey = strings.TrimSpace(*body.SendKey)
+		if len(sendKey) > 8<<10 {
+			fields = append(fields, apierr.FieldError{Field: "send_key", Message: "A chave passa de 8 KiB."})
+		}
+	}
+	if body.Recipient != nil {
+		raw := strings.TrimSpace(*body.Recipient)
+		if raw == "" {
+			recipient = ""
+		} else if !emailAddressPattern.MatchString(raw) {
+			fields = append(fields, apierr.FieldError{Field: "recipient", Message: "O destinatário precisa ser um e-mail."})
+		} else {
+			recipient = raw
+		}
+	}
 	if len(fields) > 0 {
 		apierr.Write(w, apierr.Invalid(fields))
 		return
 	}
 	var box vault.Box
-	if key != "" {
+	if key != "" || sendKey != "" {
 		box, err = s.openVault()
 		if err != nil {
 			s.writeSabia(w, err)
@@ -109,6 +133,16 @@ func (s *Server) putSabia(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	now := s.Now()
+	if sendKey != "" || recipient != link.Recipient || origin != link.Origin {
+		detail := "SABIA_REPLACED"
+		if recipient == "" || origin == "" {
+			detail = "SABIA_REMOVED"
+		}
+		if err := s.Store.FailPendingSabia(detail, now); err != nil {
+			apierr.Write(w, err)
+			return
+		}
+	}
 	if template != nil {
 		if err := s.Store.SaveSabiaTemplate(store.SabiaTemplate{
 			Name:    template.Name,
@@ -120,14 +154,20 @@ func (s *Server) putSabia(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if body.Origin != nil || body.ApplicationID != nil {
-		if err := s.Store.SaveSabiaLink(origin, applicationID, now); err != nil {
+	if body.Origin != nil || body.ApplicationID != nil || body.Recipient != nil {
+		if err := s.Store.SaveSabiaLink(origin, applicationID, recipient, now); err != nil {
 			apierr.Write(w, err)
 			return
 		}
 	}
 	if key != "" {
 		if err := box.Put(r.Context(), sabia.DeploySecret, []byte(key)); err != nil {
+			s.writeSabia(w, err)
+			return
+		}
+	}
+	if sendKey != "" {
+		if err := box.Put(r.Context(), sabia.SendSecret, []byte(sendKey)); err != nil {
 			s.writeSabia(w, err)
 			return
 		}
@@ -264,14 +304,20 @@ func (s *Server) sabiaView(r *http.Request) (map[string]any, error) {
 		template = sabia.Template{Name: stored.Name, Subject: stored.Subject, HTML: stored.HTML, Text: stored.Text}
 	}
 	present := false
+	sendPresent := false
 	if box, err := s.openVault(); err == nil {
 		ok, err := box.Present(r.Context(), sabia.DeploySecret)
 		if err == nil {
 			present = ok
 		}
+		ok, err = box.Present(r.Context(), sabia.SendSecret)
+		if err == nil {
+			sendPresent = ok
+		}
 	}
 	body := map[string]any{
 		"deploy_key_present": present,
+		"send_key_present":   sendPresent,
 		"template": map[string]string{
 			"name":    template.Name,
 			"subject": template.Subject,
@@ -285,7 +331,205 @@ func (s *Server) sabiaView(r *http.Request) (map[string]any, error) {
 	if link.ApplicationID != "" {
 		body["application_id"] = link.ApplicationID
 	}
+	if link.Recipient != "" {
+		body["recipient"] = link.Recipient
+	}
+	rows, err := s.Store.ListSabiaDeliveries(1)
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 1 {
+		body["last_status"] = rows[0].Status
+		if rows[0].Detail != "" {
+			body["last_detail"] = rows[0].Detail
+		}
+	}
 	return body, nil
+}
+
+func (s *Server) sabiaSendReady() (bool, error) {
+	link, err := s.Store.SabiaLink()
+	if err != nil {
+		return false, err
+	}
+	if link.Origin == "" || link.Recipient == "" {
+		return false, nil
+	}
+	box, err := s.openVault()
+	if err != nil {
+		return false, nil
+	}
+	present, err := box.Present(context.Background(), sabia.SendSecret)
+	if err != nil || !present {
+		return false, nil
+	}
+	return true, nil
+}
+
+func (s *Server) planSabia(intent alert.Intent, quiet bool, timezone string, ready bool) error {
+	if !ready {
+		return nil
+	}
+	resets := formatSabiaReset(intent.ResetsAt, timezone)
+	if quiet {
+		return s.insertSabia(intent, resets, "suppressed", "QUIET_HOURS", intent.Key+"|sabia|quiet")
+	}
+	pending, err := s.Store.CountPendingSabia()
+	if err != nil {
+		return err
+	}
+	status := "pending"
+	detail := ""
+	if pending >= deliveryQueueCap {
+		status = "failed"
+		detail = "QUEUE_FULL"
+	}
+	return s.insertSabia(intent, resets, status, detail, intent.Key+"|sabia")
+}
+
+func (s *Server) insertSabia(intent alert.Intent, resets string, status string, detail string, key string) error {
+	id, err := token.New("sab_")
+	if err != nil {
+		return err
+	}
+	now := s.Now()
+	_, err = s.Store.InsertSabiaDelivery(store.SabiaDelivery{
+		ID:             id,
+		IdempotencyKey: key,
+		Kind:           intent.Kind,
+		Provider:       intent.Provider,
+		Title:          intent.Title,
+		Body:           intent.Body,
+		WindowName:     intent.Window,
+		UsedLabel:      intent.Used,
+		ResetsLabel:    resets,
+		Status:         status,
+		Detail:         detail,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	})
+	return err
+}
+
+func (s *Server) flushSabia() error {
+	pending, err := s.Store.PendingSabia()
+	if err != nil {
+		return err
+	}
+	if len(pending) == 0 {
+		return nil
+	}
+	link, err := s.Store.SabiaLink()
+	if err != nil {
+		return err
+	}
+	now := s.Now()
+	sent := 0
+	for _, delivery := range pending {
+		if now.Sub(delivery.CreatedAt) > deliveryMaxAge {
+			if err := s.Store.UpdateSabiaDelivery(delivery.ID, "failed", "DELIVERY_EXPIRED", delivery.Attempts, time.Time{}, now); err != nil {
+				return err
+			}
+			continue
+		}
+		if !delivery.NextAttempt.IsZero() && delivery.NextAttempt.After(now) {
+			continue
+		}
+		if sent >= deliveryFlushLimit {
+			break
+		}
+		remoteID, err := s.sendSabia(link, delivery)
+		attempts := delivery.Attempts + 1
+		if errors.Is(err, errSabiaRejected) {
+			if err := s.Store.UpdateSabiaDelivery(delivery.ID, "failed", "SABIA_REJECTED", attempts, time.Time{}, now); err != nil {
+				return err
+			}
+			sent++
+			continue
+		}
+		var call *sabia.CallError
+		permanent := errors.As(err, &call) && call.Permanent()
+		if errors.Is(err, errSabiaUnconfigured) || permanent || (err != nil && attempts >= deliveryAttemptLimit) {
+			detail := "SEND_FAILED"
+			if errors.Is(err, errSabiaUnconfigured) {
+				detail = "SABIA_UNCONFIGURED"
+			}
+			if err := s.Store.UpdateSabiaDelivery(delivery.ID, "failed", detail, attempts, time.Time{}, now); err != nil {
+				return err
+			}
+			if !errors.Is(err, errSabiaUnconfigured) {
+				sent++
+			}
+			continue
+		}
+		if err != nil {
+			if err := s.Store.UpdateSabiaDelivery(delivery.ID, "pending", "", attempts, now.Add(retryDelay(attempts)), now); err != nil {
+				return err
+			}
+			sent++
+			continue
+		}
+		detail := "QUEUED"
+		if remoteID != "" {
+			detail = "QUEUED:" + remoteID
+		}
+		if err := s.Store.UpdateSabiaDelivery(delivery.ID, "queued", detail, attempts, time.Time{}, now); err != nil {
+			return err
+		}
+		sent++
+	}
+	return nil
+}
+
+var (
+	errSabiaUnconfigured = errors.New("sabia unconfigured")
+	errSabiaRejected     = errors.New("sabia rejected")
+)
+
+func (s *Server) sendSabia(link store.SabiaLink, delivery store.SabiaDelivery) (string, error) {
+	if link.Origin == "" || link.Recipient == "" {
+		return "", errSabiaUnconfigured
+	}
+	box, err := s.openVault()
+	if err != nil {
+		return "", errSabiaUnconfigured
+	}
+	secret, err := box.Get(context.Background(), sabia.SendSecret)
+	if errors.Is(err, vault.ErrNotFound) {
+		return "", errSabiaUnconfigured
+	}
+	if err != nil {
+		return "", err
+	}
+	accepted, err := sabia.SendMessage(context.Background(), s.SabiaHTTP, link.Origin, string(secret), delivery.IdempotencyKey, sabia.Message{
+		To:       link.Recipient,
+		Template: sabia.TemplateKey,
+		Locale:   "pt-BR",
+		Data: map[string]string{
+			"provider":  alert.ProviderLabel(delivery.Provider),
+			"window":    delivery.WindowName,
+			"used":      delivery.UsedLabel,
+			"resets_at": delivery.ResetsLabel,
+		},
+	})
+	if err != nil {
+		return "", err
+	}
+	if accepted.Status == "failed" {
+		return "", errSabiaRejected
+	}
+	return accepted.DeliveryID, nil
+}
+
+func formatSabiaReset(when time.Time, timezone string) string {
+	if when.IsZero() {
+		return ""
+	}
+	location, err := time.LoadLocation(timezone)
+	if err != nil {
+		location = time.UTC
+	}
+	return when.In(location).Format("02/01/2006 15:04")
 }
 
 func (s *Server) writeSabia(w http.ResponseWriter, err error) {

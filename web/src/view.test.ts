@@ -121,6 +121,9 @@ describe("fuso", () => {
       origin: "https://sabia.exemplo",
       deploy_key_present: true,
       deploy_key: "sb_deploy_nao_mostrar",
+      send_key_present: true,
+      send_key: "sb_send_nao_mostrar",
+      recipient: "pessoa@exemplo.com",
       template: {
         name: "Alerta de uso",
         subject: "Uso",
@@ -133,7 +136,10 @@ describe("fuso", () => {
       return;
     }
     assert.equal(JSON.stringify(parsed.value).includes("sb_deploy_nao_mostrar"), false);
+    assert.equal(JSON.stringify(parsed.value).includes("sb_send_nao_mostrar"), false);
     assert.equal(parsed.value.deployKeyPresent, true);
+    assert.equal(parsed.value.sendKeyPresent, true);
+    assert.equal(parsed.value.recipient, "pessoa@exemplo.com");
     assert.equal(parsed.value.applicationId, "");
     const email = parseEmail({
       provider: "resend",

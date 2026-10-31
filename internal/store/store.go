@@ -28,7 +28,7 @@ var (
 
 const observationCap = 240
 
-const schemaVersion = 6
+const schemaVersion = 7
 
 const deliveryColumns = `id, idempotency_key, subscription_id, kind, provider, title, body, status, detail, attempts, next_attempt_at, created_at, updated_at`
 
@@ -163,6 +163,12 @@ func (s *Store) migrate() error {
 	}
 	if version < 6 {
 		if err := s.migrateV6(); err != nil {
+			return err
+		}
+		version = 6
+	}
+	if version < 7 {
+		if err := s.migrateV7(); err != nil {
 			return err
 		}
 	}
@@ -389,6 +395,38 @@ CREATE TABLE email_deliveries (
 		return fmt.Errorf("migrar e-mail: %w", err)
 	}
 	if _, err := s.db.Exec(`PRAGMA user_version = 6`); err != nil {
+		return fmt.Errorf("gravar versão: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) migrateV7() error {
+	if _, err := s.db.Exec(`ALTER TABLE sabia_link ADD COLUMN recipient TEXT NOT NULL DEFAULT ''`); err != nil {
+		return fmt.Errorf("migrar sabiá: %w", err)
+	}
+	schema := `
+CREATE TABLE sabia_deliveries (
+  id TEXT PRIMARY KEY,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  kind TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  window_name TEXT NOT NULL,
+  used_label TEXT NOT NULL,
+  resets_label TEXT NOT NULL,
+  status TEXT NOT NULL,
+  detail TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  next_attempt_at TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+`
+	if _, err := s.db.Exec(schema); err != nil {
+		return fmt.Errorf("migrar sabiá: %w", err)
+	}
+	if _, err := s.db.Exec(`PRAGMA user_version = 7`); err != nil {
 		return fmt.Errorf("gravar versão: %w", err)
 	}
 	return nil

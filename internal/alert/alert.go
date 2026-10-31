@@ -13,6 +13,9 @@ type Intent struct {
 	Provider string
 	Title    string
 	Body     string
+	Window   string
+	Used     string
+	ResetsAt time.Time
 }
 
 func FromSample(sample contract.Sample, threshold float64, now time.Time) []Intent {
@@ -25,6 +28,9 @@ func FromSample(sample contract.Sample, threshold float64, now time.Time) []Inte
 				Provider: sample.Provider,
 				Title:    "Limiar de uso",
 				Body:     fmt.Sprintf("%s %s em %.0f%%.", label(sample.Provider), window.Name, window.Used),
+				Window:   window.Name,
+				Used:     fmt.Sprintf("%.0f", window.Used),
+				ResetsAt: window.ResetsAt,
 			})
 		}
 		until := window.ResetsAt.Sub(now)
@@ -35,6 +41,9 @@ func FromSample(sample contract.Sample, threshold float64, now time.Time) []Inte
 				Provider: sample.Provider,
 				Title:    "Reset próximo",
 				Body:     fmt.Sprintf("%s %s reinicia em até 60 minutos.", label(sample.Provider), window.Name),
+				Window:   window.Name,
+				Used:     fmt.Sprintf("%.0f", window.Used),
+				ResetsAt: window.ResetsAt,
 			})
 		}
 	}
@@ -74,6 +83,10 @@ func ClockMinutes(value string) (int, error) {
 		return 0, err
 	}
 	return parsed.Hour()*60 + parsed.Minute(), nil
+}
+
+func ProviderLabel(provider string) string {
+	return label(provider)
 }
 
 func label(provider string) string {

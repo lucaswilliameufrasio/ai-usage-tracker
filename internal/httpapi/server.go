@@ -683,11 +683,18 @@ func (s *Server) planAlerts(sample contract.Sample) error {
 			active = append(active, sub)
 		}
 	}
+	sabiaReady, err := s.sabiaSendReady()
+	if err != nil {
+		return err
+	}
 	for _, intent := range intents {
 		if err := s.planPush(intent, quiet, active); err != nil {
 			return err
 		}
 		if err := s.planEmail(intent, quiet); err != nil {
+			return err
+		}
+		if err := s.planSabia(intent, quiet, settings.Timezone, sabiaReady); err != nil {
 			return err
 		}
 	}
@@ -760,7 +767,10 @@ func (s *Server) flush() error {
 	if err := s.flushPush(); err != nil {
 		return err
 	}
-	return s.flushEmail()
+	if err := s.flushEmail(); err != nil {
+		return err
+	}
+	return s.flushSabia()
 }
 
 func (s *Server) flushPush() error {

@@ -217,6 +217,8 @@ describe("tela de acesso", () => {
       await waitFor(() => root.textContent?.includes("Sincronizar publica no Sabiá") === true, root);
       assert.equal(root.textContent?.includes(hiddenKey), false);
       assert.equal(root.textContent?.includes("Não apaga templates"), true);
+      assert.equal(root.textContent?.includes("aceito na fila do Sabiá"), true);
+      assert.equal(root.textContent?.includes("não confirma a caixa de entrada"), true);
       const form = root.querySelector("form[data-panel='sabia']");
       if (!(form instanceof view.HTMLFormElement)) {
         throw new Error("formulário do Sabiá ausente");
@@ -386,7 +388,7 @@ describe("e-mail da instalação", () => {
       await waitFor(() => root.textContent?.includes("E-mail ativo. Chave guardada.") === true, root);
       assert.equal(root.textContent?.includes(storedKey), false);
       assert.equal(root.textContent?.includes("re_exemplo_nao_usar"), true);
-      assert.equal(root.textContent?.includes("O Sabiá não envia"), true);
+      assert.equal(root.textContent?.includes("A chave do Sabiá não entra neste canal."), true);
       const form = root.querySelector("form[data-panel='email']");
       if (!(form instanceof view.HTMLFormElement)) {
         throw new Error("formulário de e-mail ausente");

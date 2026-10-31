@@ -714,7 +714,7 @@ function emailForm(doc: Document, view: Window, state: AppState, item: EmailView
   const kept = emailKept(item);
   form.append(el(doc, "p", "meta", kept));
   form.append(el(doc, "p", "", "Um remetente e um destinatário para toda a instalação. A chave entra no cofre e não volta para esta tela."));
-  form.append(el(doc, "p", "", "O Sabiá não envia este aviso. Sem canal ativo, o e-mail fica indisponível."));
+  form.append(el(doc, "p", "", "Este aviso sai pelo provedor acima. Sem canal ativo, o e-mail fica indisponível. A chave do Sabiá não entra neste canal."));
   if (item.lastStatus !== undefined) {
     form.append(el(doc, "p", "meta", `Último envio: ${emailStatus(item.lastStatus, item.lastDetail)}`));
   }
@@ -867,13 +867,20 @@ function sabiaForm(doc: Document, view: Window, state: AppState, item: SabiaView
   form.className = "stack access-form";
   form.dataset.panel = "sabia";
   form.append(el(doc, "h2", "", "Sabiá"));
-  const kept = item.deployKeyPresent ? "Chave de deploy guardada." : "Nenhuma chave de deploy guardada.";
-  form.append(el(doc, "p", "meta", kept));
+  const deploy = item.deployKeyPresent ? "Chave de deploy guardada." : "Nenhuma chave de deploy guardada.";
+  const send = item.sendKeyPresent ? "Chave de envio guardada." : "Nenhuma chave de envio guardada.";
+  form.append(el(doc, "p", "meta", `${deploy} ${send}`));
   form.append(el(doc, "p", "", "Edite o template aqui e sincronize sem abrir a plataforma. A chave entra no cofre e não volta para esta tela."));
   form.append(el(doc, "p", "", "Sincronizar publica no Sabiá. Não apaga templates que não estão aqui."));
+  form.append(el(doc, "p", "", "O alerta pede POST /v1/messages com a chave de envio. Um 202 fica aceito na fila do Sabiá. Isso não confirma a caixa de entrada."));
+  if (item.lastStatus !== undefined) {
+    form.append(el(doc, "p", "meta", `Último pedido: ${sabiaStatus(item.lastStatus, item.lastDetail)}`));
+  }
   form.append(field(doc, "Endereço", "url", "origin", item.origin));
   form.append(field(doc, "Id da aplicação", "text", "application_id", item.applicationId));
-  form.append(sabiaKeyField(doc));
+  form.append(field(doc, "Destinatário", "email", "recipient", item.recipient));
+  form.append(sabiaKeyField(doc, "Chave de envio", "send_key", "sabia-send"));
+  form.append(sabiaKeyField(doc, "Chave de deploy", "deploy_key", "sabia"));
   form.append(field(doc, "Nome", "text", "name", item.name));
   form.append(field(doc, "Assunto", "text", "subject", item.subject));
   form.append(textBlock(doc, "HTML", "html", item.html));
@@ -921,17 +928,36 @@ function sabiaChange(doc: Document, change: SabiaChangeView): HTMLElement {
   return row;
 }
 
-function sabiaKeyField(doc: Document): HTMLLabelElement {
+function sabiaStatus(status: string, detail: string | undefined): string {
+  if (status === "queued") {
+    return "aceito na fila do Sabiá";
+  }
+  if (status === "pending") {
+    return "na fila daqui";
+  }
+  if (status === "suppressed") {
+    return "em horário silencioso";
+  }
+  if (status === "failed") {
+    if (detail !== undefined && detail !== "") {
+      return `falhou (${detail})`;
+    }
+    return "falhou";
+  }
+  return status;
+}
+
+function sabiaKeyField(doc: Document, labelText: string, name: string, secret: string): HTMLLabelElement {
   const label = doc.createElement("label");
-  label.textContent = "Chave de deploy";
+  label.textContent = labelText;
   const input = doc.createElement("input");
   input.type = "password";
-  input.name = "deploy_key";
+  input.name = name;
   input.autocomplete = "off";
   input.spellcheck = false;
   input.placeholder = "Deixe vazio para manter a chave guardada.";
   input.value = "";
-  input.dataset.secret = "sabia";
+  input.dataset.secret = secret;
   label.append(input);
   return label;
 }
@@ -1468,6 +1494,7 @@ async function putSabia(
   const body: Record<string, unknown> = {
     origin: formText(data, "origin"),
     application_id: formText(data, "application_id"),
+    recipient: formText(data, "recipient"),
     template: {
       name: formText(data, "name"),
       subject: formText(data, "subject"),
@@ -1479,6 +1506,11 @@ async function putSabia(
   const deployKey = keyInput === undefined ? "" : keyInput.value.trim();
   if (deployKey !== "") {
     body.deploy_key = deployKey;
+  }
+  const sendInput = inputNamed(form, "send_key");
+  const sendKey = sendInput === undefined ? "" : sendInput.value.trim();
+  if (sendKey !== "") {
+    body.send_key = sendKey;
   }
   const result = await apiRequest(view.location.origin, "/v1/admin/sabia", state.token, "PUT", body);
   if (loadId !== state.loadId) {
@@ -1503,16 +1535,25 @@ async function putSabia(
 }
 
 function withChanges(sabia: SabiaView, changes: SabiaChangeView[]): SabiaView {
-  return {
+  const next: SabiaView = {
     origin: sabia.origin,
     applicationId: sabia.applicationId,
+    recipient: sabia.recipient,
     deployKeyPresent: sabia.deployKeyPresent,
+    sendKeyPresent: sabia.sendKeyPresent,
     name: sabia.name,
     subject: sabia.subject,
     html: sabia.html,
     text: sabia.text,
     changes,
   };
+  if (sabia.lastStatus !== undefined) {
+    next.lastStatus = sabia.lastStatus;
+  }
+  if (sabia.lastDetail !== undefined) {
+    next.lastDetail = sabia.lastDetail;
+  }
+  return next;
 }
 
 function selectedConfirmations(form: HTMLFormElement): string[] {

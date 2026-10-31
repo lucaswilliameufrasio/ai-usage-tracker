@@ -62,11 +62,15 @@ export type SabiaChangeView = {
 export type SabiaView = {
   origin: string;
   applicationId: string;
+  recipient: string;
   deployKeyPresent: boolean;
+  sendKeyPresent: boolean;
   name: string;
   subject: string;
   html: string;
   text: string;
+  lastStatus?: string;
+  lastDetail?: string;
   changes?: SabiaChangeView[];
 };
 
@@ -337,7 +341,11 @@ const secretBackendSchema = object({
 const sabiaSchema = object({
   origin: optional(string()),
   application_id: optional(string()),
+  recipient: optional(string()),
   deploy_key_present: boolean(),
+  send_key_present: optional(boolean()),
+  last_status: optional(string()),
+  last_detail: optional(string()),
   template: object({
     name: string(),
     subject: string(),
@@ -507,18 +515,24 @@ export function parseSabia(value: unknown): Parsed<SabiaView> {
     return fail("O Sabiá veio ilegível.");
   }
   const item = parsed.output;
-  return {
-    ok: true,
-    value: {
-      origin: item.origin ?? "",
-      applicationId: item.application_id ?? "",
-      deployKeyPresent: item.deploy_key_present,
-      name: item.template.name,
-      subject: item.template.subject,
-      html: item.template.html,
-      text: item.template.text,
-    },
+  const view: SabiaView = {
+    origin: item.origin ?? "",
+    applicationId: item.application_id ?? "",
+    recipient: item.recipient ?? "",
+    deployKeyPresent: item.deploy_key_present,
+    sendKeyPresent: item.send_key_present ?? false,
+    name: item.template.name,
+    subject: item.template.subject,
+    html: item.template.html,
+    text: item.template.text,
   };
+  if (presentString(item.last_status)) {
+    view.lastStatus = item.last_status;
+  }
+  if (presentString(item.last_detail)) {
+    view.lastDetail = item.last_detail;
+  }
+  return { ok: true, value: view };
 }
 
 export function parseSabiaPlan(value: unknown): Parsed<SabiaChangeView[]> {

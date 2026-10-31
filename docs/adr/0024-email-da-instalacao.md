@@ -2,6 +2,7 @@
 
 - Status: aceito
 - Data: 2026-10-31
+- Atualização 2026-10-31: o envio pelo Sabiá é outro caminho, no ADR 0028. Este canal de e-mail continua sem usar o Sabiá.
 
 ## Contexto
 

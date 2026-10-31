@@ -12,6 +12,7 @@ const (
 	TemplateID   = "usage-alert-v1"
 	TemplateKey  = "usage.alert"
 	DeploySecret = "sabia.deploy"
+	SendSecret   = "sabia.send"
 	maxField     = 4000
 )
 

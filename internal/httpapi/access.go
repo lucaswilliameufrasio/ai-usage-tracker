@@ -237,6 +237,7 @@ func backendOccupied(ctx context.Context, box vault.Box) (bool, error) {
 		access.SecretRef(access.Apple),
 		mail.SecretName,
 		sabia.DeploySecret,
+		sabia.SendSecret,
 	}
 	for _, name := range names {
 		present, err := box.Present(ctx, name)

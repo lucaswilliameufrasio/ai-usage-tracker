@@ -39,7 +39,7 @@ O script baixa o pacote e o `checksums.txt` da mesma release, confere o SHA256 e
 
 `data/`, `device.token`, `spool.json` e a chave VAPID ficam fora do Git. Não commite credenciais nem capturas pessoais.
 
-O backup do SQLite é um snapshot consistente. Ele não inclui o cofre nem a chave. A restauração só grava num diretório que ainda não tem `tracker.db` (ADR 0010). A tela não baixa o banco. A recuperação do produto é o sqlite-replication (ADR 0011). O processo abre o banco em WAL. O ensaio do replicador fica no teste e usa o módulo local `../sqlite-replication/go`; ele não abre o `data/` em uso. O aviso de push entra numa fila de até 32 pendentes, com nova tentativa e prazo de 24 horas (ADR 0013). O e-mail da instalação usa os mesmos limites, numa fila própria (ADR 0024). O banco aberto por este código fica na user_version 6.
+O backup do SQLite é um snapshot consistente. Ele não inclui o cofre nem a chave. A restauração só grava num diretório que ainda não tem `tracker.db` (ADR 0010). A tela não baixa o banco. A recuperação do produto é o sqlite-replication (ADR 0011). O processo abre o banco em WAL. O ensaio do replicador fica no teste e usa o módulo local `../sqlite-replication/go`; ele não abre o `data/` em uso. O aviso de push entra numa fila de até 32 pendentes, com nova tentativa e prazo de 24 horas (ADR 0013). O e-mail da instalação usa os mesmos limites, numa fila própria (ADR 0024). O alerta configurado no Sabiá pede `POST /v1/messages` e um 202 fica aceito na fila de lá, sem confirmar a caixa (ADR 0028). O banco aberto por este código fica na user_version 7.
 
 ```sh
 go run ./cmd/tracker backup --data data --out snapshot.db

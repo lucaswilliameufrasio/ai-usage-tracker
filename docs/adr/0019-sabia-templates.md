@@ -2,6 +2,7 @@
 
 - Status: aceito
 - Data: 2026-10-30
+- Atualização 2026-10-31: o envio por POST /v1/messages está no ADR 0028. O texto abaixo registra o corte que só publicava o template.
 
 ## Contexto
 

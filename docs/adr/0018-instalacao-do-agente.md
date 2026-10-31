@@ -2,6 +2,7 @@
 
 - Status: aceito
 - Data: 2026-10-30
+- Atualização 2026-10-31: o comando instalado passou a ser `ai-usage` (ADR 0025). O texto abaixo registra a decisão original.
 
 ## Contexto
 

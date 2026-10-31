@@ -3,6 +3,7 @@ set -eu
 
 REPO="lucaswilliameufrasio/ai-usage-tracker"
 TAG="latest"
+BIN_NAME="ai-usage"
 BIN_DIR="${HOME}/.local/bin"
 FORCE=""
 BASE_URL=""
@@ -106,7 +107,7 @@ printf '%s\n' "$TAG" | grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-
 }
 
 VERSION="${TAG#v}"
-ASSET="agent_${VERSION}_${OS_NAME}_${ARCH_NAME}.tar.gz"
+ASSET="${BIN_NAME}_${VERSION}_${OS_NAME}_${ARCH_NAME}.tar.gz"
 if [ -z "$BASE_URL" ]; then
   BASE_URL="https://github.com/${REPO}/releases/download/${TAG}"
 fi
@@ -140,9 +141,9 @@ ACTUAL_HASH="$(printf '%s' "$ACTUAL_HASH" | tr 'A-F' 'a-f')"
 echo "Checksum conferido"
 
 tar -xf "$ASSET_FILE" -C "$TMP_DIR"
-[ -f "${TMP_DIR}/agent" ] || { echo "O pacote não contém agent" >&2; exit 1; }
-if [ -e "${BIN_DIR}/agent" ] && [ "$FORCE" != "yes" ]; then
-  if (printf 'Substituir %s? [s/N] ' "${BIN_DIR}/agent" >/dev/tty) 2>/dev/null; then
+[ -f "${TMP_DIR}/${BIN_NAME}" ] || { echo "O pacote não contém ${BIN_NAME}" >&2; exit 1; }
+if [ -e "${BIN_DIR}/${BIN_NAME}" ] && [ "$FORCE" != "yes" ]; then
+  if (printf 'Substituir %s? [s/N] ' "${BIN_DIR}/${BIN_NAME}" >/dev/tty) 2>/dev/null; then
     read -r answer </dev/tty || answer=n
     case "$answer" in
       [sSyY]*) ;;
@@ -155,9 +156,9 @@ if [ -e "${BIN_DIR}/agent" ] && [ "$FORCE" != "yes" ]; then
   fi
 fi
 mkdir -p "$BIN_DIR"
-install -m 0755 "${TMP_DIR}/agent" "${BIN_DIR}/agent"
+install -m 0755 "${TMP_DIR}/${BIN_NAME}" "${BIN_DIR}/${BIN_NAME}"
 
-echo "Agente ${TAG} instalado em ${BIN_DIR}/agent"
+echo "Agente ${TAG} instalado em ${BIN_DIR}/${BIN_NAME}"
 case ":${PATH}:" in
   *:"${BIN_DIR}":*) ;;
   *) echo "Coloque ${BIN_DIR} no PATH: export PATH=\"${BIN_DIR}:\$PATH\"" ;;

@@ -33,7 +33,7 @@ jobs:
         run: |
           tag="$GITHUB_REF_NAME"
           gh release create "$tag" \
-            dist/release/agent_*.tar.gz \
+            dist/release/ai-usage_*.tar.gz \
             dist/release/checksums.txt \
             dist/release/agent-installer.sh \
             --title "$tag" \

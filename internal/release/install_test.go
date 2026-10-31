@@ -22,7 +22,7 @@ import (
 func TestInstallerRejectsBadChecksumAndInstallsAMatchingArchive(t *testing.T) {
 	root := repoRoot(t)
 	osName, archName := hostNames()
-	asset := "agent_0.1.0_" + osName + "_" + archName + ".tar.gz"
+	asset := "ai-usage_0.1.0_" + osName + "_" + archName + ".tar.gz"
 	pub := t.TempDir()
 	payload := []byte("#!/bin/sh\nprintf 'agente-de-teste\\n'\n")
 	writeArchive(t, filepath.Join(pub, asset), payload)
@@ -37,7 +37,7 @@ func TestInstallerRejectsBadChecksumAndInstallsAMatchingArchive(t *testing.T) {
 	if bad.exit == 0 || !strings.Contains(bad.output, "Checksum não confere") {
 		t.Fatalf("checksum ruim saiu %d: %s", bad.exit, bad.output)
 	}
-	if _, err := os.Stat(filepath.Join(binDir, "agent")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(binDir, "ai-usage")); !os.IsNotExist(err) {
 		t.Fatal("checksum ruim instalou o binário")
 	}
 
@@ -48,7 +48,7 @@ func TestInstallerRejectsBadChecksumAndInstallsAMatchingArchive(t *testing.T) {
 	if good.exit != 0 {
 		t.Fatalf("instalação %d: %s", good.exit, good.output)
 	}
-	out, err := exec.Command(filepath.Join(binDir, "agent")).CombinedOutput()
+	out, err := exec.Command(filepath.Join(binDir, "ai-usage")).CombinedOutput()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +60,7 @@ func TestInstallerRejectsBadChecksumAndInstallsAMatchingArchive(t *testing.T) {
 	if again.exit == 0 || !strings.Contains(again.output, "Sem terminal") {
 		t.Fatalf("reinstalação sem --force saiu %d: %s", again.exit, again.output)
 	}
-	kept, err := os.ReadFile(filepath.Join(binDir, "agent"))
+	kept, err := os.ReadFile(filepath.Join(binDir, "ai-usage"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,12 +102,12 @@ func TestPackagedAgentInstalls(t *testing.T) {
 	if installed.exit != 0 {
 		t.Fatalf("instalação %d: %s", installed.exit, installed.output)
 	}
-	agent := exec.Command(filepath.Join(binDir, "agent"))
+	agent := exec.Command(filepath.Join(binDir, "ai-usage"))
 	raw, err := agent.CombinedOutput()
 	if agent.ProcessState == nil || agent.ProcessState.ExitCode() != 2 {
 		t.Fatalf("uso saiu %v: %s", err, raw)
 	}
-	if !strings.Contains(string(raw), "uso: agent enroll | agent run | agent setup") {
+	if !strings.Contains(string(raw), "uso: ai-usage enroll | ai-usage run | ai-usage setup") {
 		t.Fatalf("uso %q", raw)
 	}
 }
@@ -137,7 +137,7 @@ func writeArchive(t *testing.T, path string, payload []byte) {
 	gz := gzip.NewWriter(file)
 	tw := tar.NewWriter(gz)
 	header := &tar.Header{
-		Name: "agent",
+		Name: "ai-usage",
 		Mode: 0o755,
 		Size: int64(len(payload)),
 	}

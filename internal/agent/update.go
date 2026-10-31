@@ -21,8 +21,9 @@ import (
 )
 
 const (
-	releaseRepo  = "lucaswilliameufrasio/ai-usage-tracker"
-	archiveLimit = 64 << 20
+	releaseRepo    = "lucaswilliameufrasio/ai-usage-tracker"
+	releaseCommand = "ai-usage"
+	archiveLimit   = 64 << 20
 )
 
 type UpdateOptions struct {
@@ -91,7 +92,7 @@ func installRelease(ctx context.Context, opts UpdateOptions, base string, versio
 	if arch == "" {
 		arch = runtime.GOARCH
 	}
-	asset := fmt.Sprintf("agent_%s_%s_%s.tar.gz", version, goos, arch)
+	asset := fmt.Sprintf("%s_%s_%s_%s.tar.gz", releaseCommand, version, goos, arch)
 	checksums, err := getBytes(ctx, opts.Client, base+"/checksums.txt", 1<<20, "text/plain")
 	if err != nil {
 		return err
@@ -174,11 +175,11 @@ func extractAgent(raw []byte) ([]byte, error) {
 		if err != nil {
 			return nil, errors.New("pacote ilegível")
 		}
-		if header.Name != "agent" {
+		if header.Name != releaseCommand {
 			continue
 		}
 		if header.Typeflag != tar.TypeReg && header.Typeflag != 0 {
-			return nil, errors.New("o pacote não contém agent")
+			return nil, fmt.Errorf("o pacote não contém %s", releaseCommand)
 		}
 		if header.Size <= 0 || header.Size > archiveLimit {
 			return nil, errors.New("pacote grande demais")
@@ -189,7 +190,7 @@ func extractAgent(raw []byte) ([]byte, error) {
 		}
 		return payload, nil
 	}
-	return nil, errors.New("o pacote não contém agent")
+	return nil, fmt.Errorf("o pacote não contém %s", releaseCommand)
 }
 
 func swapExecutable(opts UpdateOptions, payload []byte) error {

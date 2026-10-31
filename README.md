@@ -15,7 +15,7 @@ go run ./cmd/tracker --addr 127.0.0.1:8787 --data data --web web/dist
 
 Abra `http://127.0.0.1:8787` e crie a instalação. O token do operador aparece uma vez. Fora de loopback, defina `TRACKER_SETUP_TOKEN`; se a variável existir, o setup exige o cabeçalho `X-Setup-Token` também em loopback. As telas ficam em `/`, `/historico`, `/dispositivos`, `/alertas` e `/acesso`. Um endereço antigo com `#/` abre a mesma tela (ADR 0009).
 
-No PWA, gere um código de enrolamento. No terminal, `go run ./cmd/agent run` abre o setup na primeira vez: endereço, código, Claude, Codex, Antigravity e atualização automática. Enter deixa o Antigravity e a atualização desligados. Ele propõe `~/.claude.json` e `~/.codex/sessions` e só grava o que você confirmar (ADR 0014 e ADR 0020). A configuração fica em `~/.config/ai-usage-tracker/agent.json`. O próximo `run` sem flags fica em execução e repete a cada 5 minutos. Ctrl+C espera o envio atual; o que o servidor não confirmou continua na fila (ADR 0016). `agent setup` refaz a escolha e, como o `run` com flags, envia uma vez e sai. Com o Codex configurado, o envio pergunta o limite ao comando local `codex app-server` e só usa a pasta de sessões se essa leitura falhar (ADR 0015). O agente não lê o token do Codex. Com o Antigravity ligado, cada passagem chama `agy -p /usage` e também não lê o token (ADR 0022).
+No PWA, gere um código de enrolamento. No terminal, `go run ./cmd/agent run` abre o setup na primeira vez: endereço, código, Claude, Codex, Antigravity e atualização automática. Enter deixa o Antigravity e a atualização desligados. Ele propõe `~/.claude.json` e `~/.codex/sessions` e só grava o que você confirmar (ADR 0014 e ADR 0020). A configuração fica em `~/.config/ai-usage-tracker/agent.json`. O próximo `run` sem flags fica em execução e repete a cada 5 minutos. Ctrl+C espera o envio atual; o que o servidor não confirmou continua na fila (ADR 0016). `ai-usage setup`, ou `go run ./cmd/agent setup`, refaz a escolha e, como o `run` com flags, envia uma vez e sai. Com o Codex configurado, o envio pergunta o limite ao comando local `codex app-server` e só usa a pasta de sessões se essa leitura falhar (ADR 0015). O agente não lê o token do Codex. Com o Antigravity ligado, cada passagem chama `agy -p /usage` e também não lê o token (ADR 0022).
 
 Os flags continuam o caminho de script. Nesse modo o agente não procura o diretório pessoal.
 
@@ -27,9 +27,9 @@ go run ./cmd/agent run --api http://127.0.0.1:8787 --token-file device.token --s
 
 ## Instalar o binário
 
-O script da release instala só o comando `agent` em `~/.local/bin`. O painel continua neste host. Este script não procura outra release. A atualização fica no agente, desligada por padrão; `go run` não se atualiza (ADR 0018 e ADR 0020).
+O script da release instala só o comando `ai-usage` em `~/.local/bin`. Ele não grava um comando chamado `agent`. O painel continua neste host. Este script não procura outra release. A atualização fica no agente, desligada por padrão; `go run` não se atualiza (ADR 0018, ADR 0020 e ADR 0025).
 
-A primeira release é a tag `v0.1.0`. Não houve release anterior, e o contrato público ainda muda, então a versão fica em `0.y.z`.
+A primeira release foi a tag `v0.1.0` e instalava em `agent`. A `v0.2.0` muda o comando para `ai-usage`. Não houve release anterior à `v0.1.0`, e o contrato público ainda muda, então a versão fica em `0.y.z`.
 
 ```sh
 curl -fsSL https://github.com/lucaswilliameufrasio/ai-usage-tracker/releases/latest/download/agent-installer.sh | sh

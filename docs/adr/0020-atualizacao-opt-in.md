@@ -3,6 +3,7 @@
 - Status: aceito
 - Data: 2026-10-30
 - Relacionado: ADR 0018
+- Atualização 2026-10-31: o pacote passa a conter `ai-usage` (ADR 0025). A troca continua no executável que está em execução.
 
 ## Contexto
 

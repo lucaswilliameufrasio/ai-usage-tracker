@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"ai-usage-tracker/internal/agent"
@@ -223,5 +224,6 @@ func trim(raw []byte) []byte {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "uso: agent enroll | agent run | agent setup")
+	name := filepath.Base(os.Args[0])
+	fmt.Fprintf(os.Stderr, "uso: %s enroll | %s run | %s setup\n", name, name, name)
 }

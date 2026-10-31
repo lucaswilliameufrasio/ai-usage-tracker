@@ -50,7 +50,7 @@ func TestUpdateReplacesExecutableAfterChecksum(t *testing.T) {
 		t.Fatal(err)
 	}
 	payload := []byte("novo-agente")
-	asset := "agent_0.2.0_linux_amd64.tar.gz"
+	asset := "ai-usage_0.2.0_linux_amd64.tar.gz"
 	archive := archiveBytes(t, payload)
 	sum := sha256.Sum256(archive)
 	pub := t.TempDir()
@@ -105,7 +105,7 @@ func TestUpdateReadsTheLatestTagFromTheTestServer(t *testing.T) {
 	if err := os.WriteFile(binary, []byte("antigo"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	asset := "agent_0.3.0_linux_amd64.tar.gz"
+	asset := "ai-usage_0.3.0_linux_amd64.tar.gz"
 	archive := archiveBytes(t, []byte("tres"))
 	sum := sha256.Sum256(archive)
 	mux := http.NewServeMux()
@@ -185,7 +185,7 @@ func archiveBytes(t *testing.T, payload []byte) []byte {
 	var buf bytes.Buffer
 	gz := gzip.NewWriter(&buf)
 	tw := tar.NewWriter(gz)
-	header := &tar.Header{Name: "agent", Mode: 0o755, Size: int64(len(payload))}
+	header := &tar.Header{Name: "ai-usage", Mode: 0o755, Size: int64(len(payload))}
 	if err := tw.WriteHeader(header); err != nil {
 		t.Fatal(err)
 	}

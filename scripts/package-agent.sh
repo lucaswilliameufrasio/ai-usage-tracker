@@ -56,8 +56,8 @@ build_one() {
   os="$1"
   arch="$2"
   work="$(mktemp -d)"
-  CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath -ldflags "-s -w -X ai-usage-tracker/internal/agent.Version=${VERSION}" -o "$work/agent" ./cmd/agent
-  tar -C "$work" -czf "$OUT/agent_${VERSION}_${os}_${arch}.tar.gz" agent
+  CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath -ldflags "-s -w -X ai-usage-tracker/internal/agent.Version=${VERSION}" -o "$work/ai-usage" ./cmd/agent
+  tar -C "$work" -czf "$OUT/ai-usage_${VERSION}_${os}_${arch}.tar.gz" ai-usage
   rm -rf "$work"
 }
 
@@ -79,13 +79,13 @@ fi
 
 (
   cd "$OUT"
-  sha256sum agent_"${VERSION}"_*.tar.gz > checksums.txt
+  sha256sum ai-usage_"${VERSION}"_*.tar.gz > checksums.txt
 )
 cp "$ROOT/scripts/agent-installer.sh" "$OUT/agent-installer.sh"
 cat > "$OUT/notes.md" <<EOF
 ## Instalação
 
-O script instala só o agente em \`~/.local/bin\`. O painel não entra neste pacote.
+O script instala só o comando \`ai-usage\` em \`~/.local/bin\`. O painel não entra neste pacote. Ele não grava um comando chamado \`agent\`.
 
 \`\`\`sh
 curl -fsSL https://github.com/lucaswilliameufrasio/ai-usage-tracker/releases/download/v${VERSION}/agent-installer.sh | sh -s -- --tag v${VERSION}

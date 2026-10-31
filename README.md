@@ -2,7 +2,7 @@
 
 O agente lê, na máquina do usuário, o cache ou o status line do Claude, os `rate_limits` dos rollouts do Codex e, se estiver ligado, as janelas do Antigravity pelo comando `agy`. O servidor guarda só percentuais, plano e horários de reset. O PWA mostra visão, histórico, dispositivos e alertas. Cada janela do cartão e do histórico tem a própria régua (ADR 0023). Quem administra vê uma seção por conta; cada pessoa vê só a própria (ADR 0017).
 
-Credenciais de IA, prompts, conversas e caminhos não são enviados. O e-mail BYOK da instalação e os cofres externos estão decididos e ainda sem código. O Sabiá não é dependência do produto público. Em Acesso, esta instalação edita um template e sincroniza com o Sabiá; a chave de deploy não volta para a tela (ADR 0019). Cobrança continua fora. O PWA mostra horários no fuso do dispositivo. O servidor guarda UTC (ADR 0021).
+Credenciais de IA, prompts, conversas e caminhos não são enviados. O e-mail da instalação sai por Resend, MillionSend, Cloudflare Email ou Amazon SES, com a chave no cofre próprio (ADR 0024). Os cofres externos continuam sem código. O Sabiá não é dependência do produto público. Em Acesso, esta instalação edita um template e sincroniza com o Sabiá; a chave de deploy não volta para a tela (ADR 0019). Cobrança continua fora. O PWA mostra horários no fuso do dispositivo. O servidor guarda UTC (ADR 0021).
 
 O MVP pessoal foi validado em 2026-10-30. Cada pessoa entra por Gitea, GitHub, Google ou Apple e vê os próprios dispositivos. O administrador configura esses logins em Acesso e continua com o token do operador. O segredo vai para o cofre próprio e não volta para a tela (ADR 0006, ADR 0007 e ADR 0008). A URL de retorno é a origem da instalação mais `/v1/login/github/callback`, e o mesmo caminho com `gitea`, `google` ou `apple`. Ciphera, HashiCorp Vault, AWS Secrets Manager e Infisical continuam sem adapter.
 
@@ -29,7 +29,7 @@ go run ./cmd/agent run --api http://127.0.0.1:8787 --token-file device.token --s
 
 O script da release instala só o comando `agent` em `~/.local/bin`. O painel continua neste host. Este script não procura outra release. A atualização fica no agente, desligada por padrão; `go run` não se atualiza (ADR 0018 e ADR 0020).
 
-Esse endereço só responde depois da primeira tag `vX.Y.Z`. Ainda não existe tag publicada.
+A primeira release é a tag `v0.1.0`. Não houve release anterior, e o contrato público ainda muda, então a versão fica em `0.y.z`.
 
 ```sh
 curl -fsSL https://github.com/lucaswilliameufrasio/ai-usage-tracker/releases/latest/download/agent-installer.sh | sh

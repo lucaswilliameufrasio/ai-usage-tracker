@@ -166,7 +166,11 @@ function render(root: HTMLElement, view: Window, state: AppState): void {
   }
   const shell = doc.createElement("div");
   shell.className = "shell";
-  shell.append(topbar(doc, view, state, () => render(root, view, state)));
+  const skip = doc.createElement("a");
+  skip.className = "skip";
+  skip.href = "#conteudo";
+  skip.textContent = "Ir para o conteúdo";
+  shell.append(skip, topbar(doc, view, state, () => render(root, view, state)));
   const main = doc.createElement("main");
   main.id = "conteudo";
   main.dataset.route = state.page.route;
@@ -206,9 +210,9 @@ function render(root: HTMLElement, view: Window, state: AppState): void {
 function signedOut(doc: Document, view: Window, state: AppState, paint: () => void): HTMLElement {
   const section = doc.createElement("section");
   section.className = "gate";
-  section.append(el(doc, "p", "mark", "Rastreador"));
-  section.append(el(doc, "h1", "gate-title", "Uso local, leitura no navegador"));
-  section.append(el(doc, "p", "lede", "O agente fica na sua máquina. O administrador cola o token do operador. As outras pessoas entram pelo provedor que ele configurou."));
+  section.append(el(doc, "p", "mark", "Uso"));
+  section.append(el(doc, "h1", "gate-title", "Ver o uso"));
+  section.append(el(doc, "p", "lede", "O agente fica na sua máquina. Quem tem conta entra pelo provedor configurado. O token fica só com o administrador."));
   if (state.loginChoices.length > 0) {
     const choices = doc.createElement("div");
     choices.className = "choices";
@@ -258,17 +262,35 @@ function signedOut(doc: Document, view: Window, state: AppState, paint: () => vo
   create.addEventListener("click", () => {
     void createSetup(view, state, paint);
   });
-  section.append(form, create);
+  const admin = doc.createElement("details");
+  admin.className = "admin-entry";
+  if (state.loginChoices.length === 0) {
+    admin.open = true;
+  }
+  const summary = doc.createElement("summary");
+  summary.textContent = "Sou o administrador";
+  admin.append(summary, form, create);
+  section.append(admin);
   return section;
 }
 
 function topbar(doc: Document, view: Window, state: AppState, paint: () => void): HTMLElement {
   const header = doc.createElement("header");
   header.className = "topbar";
-  const brand = screenLink(doc, view, state, paint, "overview", "Rastreador");
+  const brandline = doc.createElement("div");
+  brandline.className = "brandline";
+  const brand = screenLink(doc, view, state, paint, "overview", "Uso");
   brand.className = "mark";
   brand.removeAttribute("aria-current");
+  const exit = button(doc, "Sair", "quiet");
+  exit.dataset.action = "sign-out";
+  exit.setAttribute("aria-label", "Sair deste navegador");
+  exit.addEventListener("click", () => {
+    void signOut(view, state, paint);
+  });
+  brandline.append(brand, exit);
   const nav = doc.createElement("nav");
+  nav.setAttribute("aria-label", "Seções");
   const pages: Array<[RouteName, string]> = [
     ["overview", "Visão"],
     ["history", "Histórico"],
@@ -281,12 +303,7 @@ function topbar(doc: Document, view: Window, state: AppState, paint: () => void)
   for (const [route, label] of pages) {
     nav.append(screenLink(doc, view, state, paint, route, label));
   }
-  const exit = button(doc, "Sair deste navegador", "quiet");
-  exit.dataset.action = "sign-out";
-  exit.addEventListener("click", () => {
-    void signOut(view, state, paint);
-  });
-  header.append(brand, nav, exit);
+  header.append(brandline, nav);
   return header;
 }
 
@@ -318,8 +335,7 @@ function personView(state: AppState): boolean {
 
 function adminArea(doc: Document): HTMLElement {
   const wrap = doc.createElement("section");
-  wrap.append(el(doc, "h1", "", "Área do administrador"));
-  wrap.append(el(doc, "p", "lede", "Esta área fica com quem administra a instalação."));
+  wrap.append(pageHead(doc, "Área do administrador", "Esta área fica com quem administra a instalação."));
   return wrap;
 }
 
@@ -365,19 +381,16 @@ function overviewView(doc: Document, view: Window, state: AppState, paint: () =>
   const accounts = page.overview?.accounts;
   const grouped = accounts !== undefined;
   const wrap = doc.createElement("section");
-  if (grouped) {
-    wrap.append(el(doc, "h1", "", "Contas"));
-    wrap.append(el(doc, "p", "lede", "Cada conta mostra as próprias medições. A marca de latão é 80%."));
-  } else {
-    wrap.append(el(doc, "h1", "", "Medições"));
-    wrap.append(el(doc, "p", "lede", "Cada janela tem a própria régua. A marca de latão é 80%."));
-  }
   const refresh = button(doc, "Atualizar", "");
   refresh.dataset.action = "refresh";
   refresh.addEventListener("click", () => {
     void loadOverview(view, state, paint);
   });
-  wrap.append(refresh);
+  if (grouped) {
+    wrap.append(pageHead(doc, "Contas", "Cada conta mostra as próprias medições. A marca na régua é 80%.", refresh));
+  } else {
+    wrap.append(pageHead(doc, "Medições", "Cada janela tem a própria régua. A marca na régua é 80%.", refresh));
+  }
   if (page.problem !== "") {
     wrap.append(note(doc, page.problem, "problem"));
   }
@@ -393,7 +406,7 @@ function overviewView(doc: Document, view: Window, state: AppState, paint: () =>
   }
   if (grouped && accounts !== undefined) {
     if (accounts.length === 0) {
-      wrap.append(el(doc, "p", "", "Nenhuma conta com dispositivo."));
+      wrap.append(el(doc, "p", "empty", "Nenhuma conta com dispositivo. Gere um código em Dispositivos e enrole o agente nesta máquina."));
       return wrap;
     }
     for (const account of accounts) {
@@ -467,7 +480,7 @@ function windowRows(doc: Document, windows: WindowView[]): HTMLElement {
     const figure = el(doc, "p", "figure", `${formatUsed(item.used)}%`);
     figure.dataset.used = formatUsed(item.used);
     row.append(figure);
-    row.append(el(doc, "p", "meta", `Reinicia ${formatInstant(item.resetsAt)}`));
+    row.append(el(doc, "p", "meta", `Reinicia ${formatInstant(item.resetsAt)}.`));
     row.append(gauge(doc, item.used));
     list.append(row);
   }
@@ -478,13 +491,21 @@ function gauge(doc: Document, used: number): HTMLElement {
   const staff = doc.createElement("div");
   staff.className = "staff";
   staff.dataset.tone = staffTone(used);
-  staff.style.setProperty("--level", String(staffLevel(used)));
+  const level = staffLevel(used);
+  staff.style.setProperty("--level", String(level));
+  staff.setAttribute("role", "meter");
+  staff.setAttribute("aria-valuemin", "0");
+  staff.setAttribute("aria-valuemax", "100");
+  staff.setAttribute("aria-valuenow", String(Math.round(level)));
+  staff.setAttribute("aria-label", `${formatUsed(used)} por cento usado. O aviso começa em 80 por cento.`);
   const water = doc.createElement("div");
   water.className = "staff-water";
   const mark = doc.createElement("div");
   mark.className = "staff-mark";
-  mark.title = "Limiar de 80%";
-  staff.append(water, mark);
+  const limit = doc.createElement("span");
+  limit.className = "staff-limit";
+  limit.textContent = "80%";
+  staff.append(water, mark, limit);
   return staff;
 }
 
@@ -493,20 +514,19 @@ function historyView(doc: Document, view: Window, state: AppState, paint: () => 
     ? state.page
     : { route: "history" as const, samples: [], hasMore: false, nextCursor: "", problem: "" };
   const wrap = doc.createElement("section");
-  wrap.append(el(doc, "h1", "", "Histórico"));
-  wrap.append(el(doc, "p", "lede", "Cada linha é uma amostra aceita. Reenviar o mesmo snapshot não cria outra."));
+  wrap.append(pageHead(doc, "Histórico", "Cada linha é uma amostra aceita. Reenviar o mesmo snapshot não cria outra."));
   if (page.problem !== "") {
     wrap.append(note(doc, page.problem, "problem"));
   }
   if (page.samples.length === 0 && page.problem === "") {
-    wrap.append(el(doc, "p", "", "Nenhuma amostra no histórico."));
+    wrap.append(el(doc, "p", "empty", "Nenhuma amostra no histórico. A primeira aparece quando o agente envia uma leitura."));
   }
   const list = doc.createElement("ol");
   list.className = "history";
   for (const sample of page.samples) {
     const item = doc.createElement("li");
-    const title = el(doc, "h2", "", `${providerLabel(sample.provider)} · ${formatInstant(sample.collectedAt)}`);
-    item.append(title);
+    item.append(el(doc, "h2", "", providerLabel(sample.provider)));
+    item.append(el(doc, "p", "meta", formatInstant(sample.collectedAt)));
     if (sample.plan !== undefined && sample.plan !== "") {
       item.append(el(doc, "p", "meta", `Plano ${sample.plan}.`));
     }
@@ -530,19 +550,17 @@ function historyView(doc: Document, view: Window, state: AppState, paint: () => 
 function devicesView(doc: Document, view: Window, state: AppState, paint: () => void): HTMLElement {
   const page = state.page.route === "devices" ? state.page : { route: "devices" as const, devices: [], problem: "" };
   const wrap = doc.createElement("section");
-  wrap.append(el(doc, "h1", "", "Dispositivos"));
-  wrap.append(el(doc, "p", "lede", "O código de enrolamento aparece uma vez e vale quinze minutos. Revogar congela a fila daquele token."));
   const enroll = button(doc, "Gerar código de enrolamento", "primary");
   enroll.dataset.action = "enroll";
   enroll.addEventListener("click", () => {
     void createEnrollment(view, state, paint);
   });
-  wrap.append(enroll);
+  wrap.append(pageHead(doc, "Dispositivos", "O código de enrolamento aparece uma vez e vale quinze minutos. Revogar congela a fila daquele token.", enroll));
   if (page.problem !== "") {
     wrap.append(note(doc, page.problem, "problem"));
   }
   if (page.devices.length === 0) {
-    wrap.append(el(doc, "p", "", "Nenhum dispositivo enrolado."));
+    wrap.append(el(doc, "p", "empty", "Nenhum dispositivo enrolado. Gere um código e cole no agente desta máquina."));
   }
   const list = doc.createElement("ul");
   list.className = "devices";
@@ -573,8 +591,7 @@ function alertsView(doc: Document, view: Window, state: AppState, paint: () => v
     ? state.page
     : { route: "alerts" as const, subscriptions: [], deliveries: [], push: "loading" as const, problem: "" };
   const wrap = doc.createElement("section");
-  wrap.append(el(doc, "h1", "", "Alertas"));
-  wrap.append(el(doc, "p", "lede", "O aviso usa só título, texto, provedor e tipo. No iPhone ele depende do aplicativo na tela de início e pode atrasar."));
+  wrap.append(pageHead(doc, "Alertas", "O aviso usa só título, texto, provedor e tipo. No iPhone ele depende do aplicativo na tela de início e pode atrasar."));
   if (page.problem !== "") {
     wrap.append(note(doc, page.problem, "problem"));
   }
@@ -594,12 +611,14 @@ function alertsView(doc: Document, view: Window, state: AppState, paint: () => v
   }
   wrap.append(el(doc, "h2", "", "Inscrições"));
   if (page.subscriptions.length === 0) {
-    wrap.append(el(doc, "p", "", "Nenhuma inscrição."));
+    wrap.append(el(doc, "p", "empty", "Nenhuma inscrição. Ative os avisos neste navegador para receber o alerta aqui."));
   }
   const subs = doc.createElement("ul");
   for (const item of page.subscriptions) {
     const row = doc.createElement("li");
-    row.textContent = `${subscriptionLabel(item.status)} · ${item.endpoint} · ${formatInstant(item.createdAt)}`;
+    row.append(el(doc, "p", "", subscriptionLabel(item.status)));
+    row.append(el(doc, "p", "meta", item.endpoint));
+    row.append(el(doc, "p", "meta", formatInstant(item.createdAt)));
     const subscriptionReason = deliveryDetail(item.lastError ?? "");
     if (subscriptionReason !== "") {
       row.append(el(doc, "span", "meta", ` ${subscriptionReason}`));
@@ -616,7 +635,7 @@ function alertsView(doc: Document, view: Window, state: AppState, paint: () => v
   wrap.append(subs);
   wrap.append(el(doc, "h2", "", "Entregas"));
   if (page.deliveries.length === 0) {
-    wrap.append(el(doc, "p", "", "Nenhum aviso registrado."));
+    wrap.append(el(doc, "p", "empty", "Nenhum aviso registrado. O alerta aparece aqui depois do primeiro envio."));
   }
   const deliveries = doc.createElement("ul");
   deliveries.className = "deliveries";
@@ -629,7 +648,8 @@ function alertsView(doc: Document, view: Window, state: AppState, paint: () => v
     if (reason !== "") {
       row.append(el(doc, "p", "meta", reason));
     }
-    row.append(el(doc, "p", "", `${providerLabel(item.provider)} · ${item.title}`));
+    row.append(el(doc, "p", "", providerLabel(item.provider)));
+    row.append(el(doc, "p", "", item.title));
     row.append(el(doc, "p", "", item.body));
     row.append(el(doc, "p", "meta", formatInstant(item.createdAt)));
     deliveries.append(row);
@@ -666,9 +686,7 @@ function settingsForm(doc: Document, view: Window, state: AppState, settings: Se
 function accessView(doc: Document, view: Window, state: AppState, paint: () => void): HTMLElement {
   const page = state.page.route === "access" ? state.page : { route: "access" as const, providers: [], problem: "" };
   const wrap = doc.createElement("section");
-  wrap.append(el(doc, "h1", "", "Acesso"));
-  wrap.append(el(doc, "p", "lede", "O administrador configura o login. O segredo entra no cofre e não volta para esta tela."));
-  wrap.append(el(doc, "p", "", "Quem entra por um provedor configurado vê o próprio uso. Esta tela continua só com o administrador."));
+  wrap.append(pageHead(doc, "Acesso", "O administrador configura o login. O segredo entra no cofre e não volta para esta tela. Quem entra por um provedor configurado vê o próprio uso. Esta tela continua só com o administrador."));
   if (page.backend !== undefined) {
     wrap.append(el(doc, "p", "", backendCopy(page.backend)));
   }
@@ -2068,6 +2086,18 @@ function urlBase64ToBytes(value: string): ArrayBuffer {
 
 function parseJson(raw: string): unknown {
   return JSON.parse(raw);
+}
+
+function pageHead(doc: Document, title: string, lede: string, action?: HTMLElement): HTMLElement {
+  const head = doc.createElement("div");
+  head.className = "page-head";
+  const copy = doc.createElement("div");
+  copy.append(el(doc, "h1", "", title), el(doc, "p", "lede", lede));
+  head.append(copy);
+  if (action !== undefined) {
+    head.append(action);
+  }
+  return head;
 }
 
 function el(doc: Document, tag: string, className: string, text: string): HTMLElement {

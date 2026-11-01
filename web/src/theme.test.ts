@@ -42,7 +42,7 @@ describe("tema", () => {
     assert.equal(resolveTheme("light", true), "light");
     assert.equal(resolveTheme("dark", false), "dark");
     assert.equal(themeColor("light"), "#f7f9fb");
-    assert.equal(themeColor("dark"), "#343f4e");
+    assert.equal(themeColor("dark"), "#0d1117");
   });
 
   it("o script inicial usa a mesma chave e as mesmas cores", () => {

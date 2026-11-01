@@ -1274,3 +1274,107 @@ function parseProjection(value: unknown): ProjectionView | undefined {
     dataQuality: parsed.output.data_quality,
   };
 }
+
+export function toneLabel(used: number): string {
+  const tone = staffTone(used);
+  if (tone === "flood") {
+    return "Crítico";
+  }
+  if (tone === "watch") {
+    return "Atenção";
+  }
+  return "Folga";
+}
+
+export function remainingLabel(used: number): string {
+  const left = Math.max(0, 100 - (Number.isFinite(used) ? used : 0));
+  return `Restam ${formatUsed(left)}%`;
+}
+
+export type OverviewSummary = {
+  tightest?: { provider: string; window: string; used: number };
+  nextReset?: { provider: string; window: string; resetsAt: string };
+  current: number;
+  total: number;
+};
+
+export function summarize(cards: ProviderCard[]): OverviewSummary {
+  const summary: OverviewSummary = { current: 0, total: cards.length };
+  for (const card of cards) {
+    if (card.freshness === "current") {
+      summary.current += 1;
+    }
+    for (const item of card.windows) {
+      if (summary.tightest === undefined || item.used > summary.tightest.used) {
+        summary.tightest = { provider: card.provider, window: item.name, used: item.used };
+      }
+      const at = Date.parse(item.resetsAt);
+      if (Number.isNaN(at)) {
+        continue;
+      }
+      const best = summary.nextReset === undefined ? Number.POSITIVE_INFINITY : Date.parse(summary.nextReset.resetsAt);
+      if (at < best) {
+        summary.nextReset = { provider: card.provider, window: item.name, resetsAt: item.resetsAt };
+      }
+    }
+  }
+  return summary;
+}
+
+export type TrendPoint = { at: number; used: number };
+
+export function trendPoints(
+  samples: HistorySample[],
+  provider: string,
+  windowName: string,
+  max = 24,
+): TrendPoint[] {
+  const points: TrendPoint[] = [];
+  for (const sample of samples) {
+    if (sample.provider !== provider) {
+      continue;
+    }
+    const found = sample.windows.find((item) => item.name === windowName);
+    const at = Date.parse(sample.collectedAt);
+    if (found === undefined || Number.isNaN(at) || !Number.isFinite(found.used)) {
+      continue;
+    }
+    points.push({ at, used: found.used });
+  }
+  points.sort((a, b) => a.at - b.at);
+  return points.slice(-max);
+}
+
+export type SparkShape = { line: string; area: string; end: { x: number; y: number } };
+
+// A escala vertical é sempre 0 a 100: a mesma altura quer dizer o mesmo uso em toda janela.
+export function sparkShape(points: TrendPoint[], width: number, height: number, pad = 3): SparkShape | undefined {
+  const first = points[0];
+  const last = points[points.length - 1];
+  if (first === undefined || last === undefined || points.length < 2 || last.at <= first.at) {
+    return undefined;
+  }
+  const span = last.at - first.at;
+  const inner = height - pad * 2;
+  const coords = points.map((point) => {
+    const clamped = Math.min(100, Math.max(0, point.used));
+    return {
+      x: Math.round(((point.at - first.at) / span) * (width - pad * 2) * 10) / 10 + pad,
+      y: Math.round((height - pad - (clamped / 100) * inner) * 10) / 10,
+    };
+  });
+  const line = coords.map((c, i) => `${i === 0 ? "M" : "L"}${c.x} ${c.y}`).join(" ");
+  const end = coords[coords.length - 1] ?? { x: width - pad, y: height - pad };
+  const start = coords[0] ?? end;
+  const area = `${line} L${end.x} ${height} L${start.x} ${height} Z`;
+  return { line, area, end };
+}
+
+export function trendLabel(points: TrendPoint[]): string {
+  const first = points[0];
+  const last = points[points.length - 1];
+  if (first === undefined || last === undefined) {
+    return "";
+  }
+  return `Tendência: de ${formatUsed(first.used)}% a ${formatUsed(last.used)}% em ${points.length} leituras.`;
+}

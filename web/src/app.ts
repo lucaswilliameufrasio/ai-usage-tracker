@@ -4,6 +4,13 @@ import {
   deliveryLabel,
   formatInstant,
   formatUsed,
+  remainingLabel,
+  sparkShape,
+  summarize,
+  toneLabel,
+  trendLabel,
+  trendPoints,
+  type TrendPoint,
   loginCallbackPath,
   loginGuide,
   loginLabel,
@@ -75,7 +82,7 @@ type OverlayState =
   | { type: "revoke-device"; id: string; name: string };
 
 type PageState =
-  | { route: "overview"; overview?: Overview; fromCache: boolean; problem: string }
+  | { route: "overview"; overview?: Overview; fromCache: boolean; problem: string; trend?: HistorySample[] }
   | { route: "history"; samples: HistorySample[]; hasMore: boolean; nextCursor: string; problem: string }
   | { route: "devices"; devices: DeviceView[]; problem: string }
   | {
@@ -421,6 +428,11 @@ function overviewRequest(state: AppState): string {
   return "/v1/overview";
 }
 
+function trendRequest(state: AppState): string {
+  const base = personView(state) ? "/v1/account/samples" : "/v1/samples";
+  return `${base}?limit=60`;
+}
+
 function samplesRequest(state: AppState, cursor: string): string {
   const base = personView(state) ? "/v1/account/samples" : "/v1/samples";
   if (cursor === "") {
@@ -479,21 +491,68 @@ function overviewView(doc: Document, view: Window, state: AppState, paint: () =>
   if (page.overview.generatedAt !== "" && !page.fromCache) {
     wrap.append(el(doc, "p", "meta", `Servidor consultado em ${formatInstant(page.overview.generatedAt)}.`));
   }
+  // A amostra não traz a conta. Com mais de uma conta, a tendência misturaria dados.
+  const singleAccountTrend = page.trend !== undefined && (accounts === undefined || accounts.length === 1)
+    ? page.trend
+    : undefined;
+  if (!page.fromCache) {
+    const cards = grouped && accounts !== undefined
+      ? accounts.flatMap((account) => account.providers)
+      : page.overview.providers;
+    if (cards.length > 0) {
+      wrap.append(summaryStrip(doc, cards));
+    }
+  }
   if (grouped && accounts !== undefined) {
     if (accounts.length === 0) {
       wrap.append(el(doc, "p", "empty", "Nenhuma conta com dispositivo. Gere um código em Dispositivos e enrole o agente nesta máquina."));
       return wrap;
     }
     for (const account of accounts) {
-      wrap.append(accountSection(doc, account, page.fromCache));
+      wrap.append(accountSection(doc, account, page.fromCache, singleAccountTrend));
     }
     return wrap;
   }
-  wrap.append(providerBoard(doc, page.overview.providers, page.fromCache));
+  wrap.append(providerBoard(doc, page.overview.providers, page.fromCache, singleAccountTrend));
   return wrap;
 }
 
-function accountSection(doc: Document, account: AccountView, fromCache: boolean): HTMLElement {
+function summaryStrip(doc: Document, cards: ProviderCard[]): HTMLElement {
+  const summary = summarize(cards);
+  const list = doc.createElement("ul");
+  list.className = "summary";
+  const tile = (label: string, value: string, detail: string, tone?: string): void => {
+    const item = doc.createElement("li");
+    if (tone !== undefined) {
+      item.dataset.tone = tone;
+    }
+    item.append(el(doc, "p", "summary-label", label), el(doc, "p", "summary-value", value), el(doc, "p", "meta", detail));
+    list.append(item);
+  };
+  if (summary.tightest !== undefined) {
+    tile(
+      "Mais perto do limite",
+      `${formatUsed(summary.tightest.used)}%`,
+      `${providerLabel(summary.tightest.provider)}, ${windowLabel(summary.tightest.window)}. ${toneLabel(summary.tightest.used)}.`,
+      staffTone(summary.tightest.used),
+    );
+  } else {
+    tile("Mais perto do limite", "Sem leitura", "Nenhuma janela chegou ainda.");
+  }
+  if (summary.nextReset !== undefined) {
+    tile(
+      "Próximo reinício",
+      formatInstant(summary.nextReset.resetsAt),
+      `${providerLabel(summary.nextReset.provider)}, ${windowLabel(summary.nextReset.window)}.`,
+    );
+  } else {
+    tile("Próximo reinício", "Sem data", "Nenhum reinício conhecido.");
+  }
+  tile("Leituras atuais", `${summary.current} de ${summary.total}`, summary.current === summary.total ? "Tudo em dia." : "Há leituras antigas ou indisponíveis.");
+  return list;
+}
+
+function accountSection(doc: Document, account: AccountView, fromCache: boolean, trend?: HistorySample[]): HTMLElement {
   const section = doc.createElement("section");
   section.className = "account";
   section.dataset.account = account.id;
@@ -501,20 +560,20 @@ function accountSection(doc: Document, account: AccountView, fromCache: boolean)
   if (account.login !== "") {
     section.append(el(doc, "p", "meta", loginLabel(account.login)));
   }
-  section.append(providerBoard(doc, account.providers, fromCache));
+  section.append(providerBoard(doc, account.providers, fromCache, trend));
   return section;
 }
 
-function providerBoard(doc: Document, cards: ProviderCard[], fromCache: boolean): HTMLElement {
+function providerBoard(doc: Document, cards: ProviderCard[], fromCache: boolean, trend?: HistorySample[]): HTMLElement {
   const board = doc.createElement("div");
   board.className = "board";
   for (const card of cards) {
-    board.append(providerCard(doc, card, fromCache));
+    board.append(providerCard(doc, card, fromCache, trend));
   }
   return board;
 }
 
-function providerCard(doc: Document, card: ProviderCard, fromCache: boolean): HTMLElement {
+function providerCard(doc: Document, card: ProviderCard, fromCache: boolean, trend?: HistorySample[]): HTMLElement {
   const article = doc.createElement("article");
   article.className = "provider";
   article.dataset.provider = card.provider;
@@ -533,7 +592,10 @@ function providerCard(doc: Document, card: ProviderCard, fromCache: boolean): HT
   if (card.windows.length === 0) {
     text.append(gauge(doc, 0));
   } else {
-    text.append(windowRows(doc, card.windows));
+    const lookup = trend === undefined
+      ? undefined
+      : (name: string): TrendPoint[] => trendPoints(trend, card.provider, name);
+    text.append(windowRows(doc, card.windows, lookup));
   }
   if (card.freshness === "unavailable" && card.windows.length > 0 && !fromCache) {
     text.append(el(doc, "p", "meta", "A última amostra conhecida continua visível. Não é a leitura atual."));
@@ -545,7 +607,7 @@ function providerCard(doc: Document, card: ProviderCard, fromCache: boolean): HT
   return article;
 }
 
-function windowRows(doc: Document, windows: WindowView[]): HTMLElement {
+function windowRows(doc: Document, windows: WindowView[], trendFor?: (name: string) => TrendPoint[]): HTMLElement {
   const list = doc.createElement("ul");
   list.className = "windows";
   for (const item of windows) {
@@ -557,10 +619,49 @@ function windowRows(doc: Document, windows: WindowView[]): HTMLElement {
     figure.dataset.used = formatUsed(item.used);
     row.append(figure);
     row.append(el(doc, "p", "meta", `Reinicia ${formatInstant(item.resetsAt)}.`));
+    const tone = el(doc, "p", "tone", toneLabel(item.used));
+    tone.dataset.tone = staffTone(item.used);
+    row.append(tone);
+    row.append(el(doc, "p", "left", remainingLabel(item.used)));
+    const spark = trendFor === undefined ? undefined : sparkline(doc, trendFor(item.name), item.used);
+    if (spark !== undefined) {
+      row.append(spark);
+    }
     row.append(gauge(doc, item.used));
     list.append(row);
   }
   return list;
+}
+
+const svgNs = "http://www.w3.org/2000/svg";
+
+function sparkline(doc: Document, points: TrendPoint[], used: number): HTMLElement | undefined {
+  const shape = sparkShape(points, 160, 36);
+  if (shape === undefined) {
+    return undefined;
+  }
+  const wrap = doc.createElement("div");
+  wrap.className = "spark";
+  wrap.dataset.tone = staffTone(used);
+  const svg = doc.createElementNS(svgNs, "svg");
+  svg.setAttribute("viewBox", "0 0 160 36");
+  svg.setAttribute("preserveAspectRatio", "none");
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", trendLabel(points));
+  const area = doc.createElementNS(svgNs, "path");
+  area.setAttribute("class", "spark-area");
+  area.setAttribute("d", shape.area);
+  const line = doc.createElementNS(svgNs, "path");
+  line.setAttribute("class", "spark-line");
+  line.setAttribute("d", shape.line);
+  line.setAttribute("vector-effect", "non-scaling-stroke");
+  svg.append(area, line);
+  const dot = doc.createElement("span");
+  dot.className = "spark-dot";
+  dot.style.setProperty("--x", `${(shape.end.x / 160) * 100}%`);
+  dot.style.setProperty("--y", `${(shape.end.y / 36) * 100}%`);
+  wrap.append(svg, dot);
+  return wrap;
 }
 
 function gauge(doc: Document, used: number): HTMLElement {
@@ -1892,6 +1993,21 @@ async function loadOverview(view: Window, state: AppState, paint: () => void): P
     JSON.stringify({ saved_at: new Date().toISOString(), overview: result.body }),
   );
   state.page = { route: "overview", overview: parsed.value, fromCache: false, problem: "" };
+  paint();
+  void loadTrend(view, state, loadId, paint);
+}
+
+// A tendência é um enfeite da leitura. Se falhar, a visão continua como está.
+async function loadTrend(view: Window, state: AppState, loadId: number, paint: () => void): Promise<void> {
+  const result = await apiRequest(view.location.origin, trendRequest(state), state.token, "GET");
+  if (!result.ok || loadId !== state.loadId || state.page.route !== "overview" || state.page.fromCache) {
+    return;
+  }
+  const parsed = parseHistory(result.body);
+  if (!parsed.ok) {
+    return;
+  }
+  state.page = { ...state.page, trend: parsed.value.samples };
   paint();
 }
 

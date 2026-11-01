@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --experimental-strip-types --test src/view.test.ts src/theme.test.ts scripts/access-screen.test.ts scripts/login-gate.test.ts scripts/alerts-screen.test.ts scripts/accounts-screen.test.ts scripts/theme-screen.test.ts",
+    "test": "node --experimental-strip-types --test src/view.test.ts src/theme.test.ts scripts/access-screen.test.ts scripts/login-gate.test.ts scripts/alerts-screen.test.ts scripts/accounts-screen.test.ts scripts/theme-screen.test.ts scripts/trend-screen.test.ts",
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit && vite build",
     "dev": "vite --host 127.0.0.1"

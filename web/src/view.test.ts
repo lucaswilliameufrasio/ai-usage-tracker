@@ -23,6 +23,12 @@ import {
   projectionCopy,
   readingCopy,
   staffTone,
+  toneLabel,
+  remainingLabel,
+  summarize,
+  trendPoints,
+  sparkShape,
+  trendLabel,
 } from "./view.ts";
 
 describe("rotas", () => {
@@ -406,5 +412,79 @@ describe("avisos", () => {
     assert.equal(staffTone(79), "calm");
     assert.equal(staffTone(80), "watch");
     assert.equal(staffTone(95), "flood");
+  });
+});
+
+describe("resumo da visão", () => {
+  it("nomeia o estado em texto e o que resta", () => {
+    assert.equal(toneLabel(10), "Folga");
+    assert.equal(toneLabel(80), "Atenção");
+    assert.equal(toneLabel(99), "Crítico");
+    assert.equal(remainingLabel(42), "Restam 58%");
+    assert.equal(remainingLabel(130), "Restam 0%");
+  });
+
+  it("acha a janela mais cheia e o próximo reinício", () => {
+    const summary = summarize([
+      { provider: "claude", freshness: "current", windows: [
+        { name: "five_hour", used: 42, resetsAt: "2026-11-01T18:00:00Z" },
+        { name: "seven_day", used: 86, resetsAt: "2026-11-06T09:00:00Z" },
+      ] },
+      { provider: "codex", freshness: "stale", windows: [
+        { name: "five_hour", used: 10, resetsAt: "2026-11-01T17:00:00Z" },
+      ] },
+      { provider: "antigravity", freshness: "unavailable", windows: [] },
+    ]);
+    assert.equal(summary.current, 1);
+    assert.equal(summary.total, 3);
+    assert.deepEqual(summary.tightest, { provider: "claude", window: "seven_day", used: 86 });
+    assert.deepEqual(summary.nextReset, { provider: "codex", window: "five_hour", resetsAt: "2026-11-01T17:00:00Z" });
+    assert.equal(summarize([]).tightest, undefined);
+  });
+});
+
+describe("tendência", () => {
+  const sample = (id: string, provider: string, at: string, used: number) => ({
+    sampleId: id,
+    provider,
+    collectedAt: at,
+    windows: [{ name: "five_hour", used, resetsAt: "2026-11-02T00:00:00Z" }],
+  });
+
+  it("filtra por provedor e janela e ordena do mais antigo ao mais novo", () => {
+    const points = trendPoints([
+      sample("c", "claude", "2026-11-01T12:00:00Z", 30),
+      sample("a", "claude", "2026-11-01T10:00:00Z", 10),
+      sample("x", "codex", "2026-11-01T11:00:00Z", 99),
+      sample("b", "claude", "2026-11-01T11:00:00Z", 20),
+    ], "claude", "five_hour");
+    assert.deepEqual(points.map((p) => p.used), [10, 20, 30]);
+    assert.deepEqual(trendPoints([], "claude", "five_hour"), []);
+    assert.equal(trendPoints([sample("a", "claude", "2026-11-01T10:00:00Z", 1)], "claude", "seven_day").length, 0);
+  });
+
+  it("limita aos pontos mais recentes", () => {
+    const many = Array.from({ length: 30 }, (_, i) => sample(String(i), "claude", new Date(Date.UTC(2026, 10, 1, 0, i)).toISOString(), i));
+    const points = trendPoints(many, "claude", "five_hour", 24);
+    assert.equal(points.length, 24);
+    assert.equal(points[points.length - 1]?.used, 29);
+  });
+
+  it("desenha só com dois pontos em instantes diferentes e escala de 0 a 100", () => {
+    assert.equal(sparkShape([{ at: 1, used: 5 }], 100, 40), undefined);
+    assert.equal(sparkShape([{ at: 1, used: 5 }, { at: 1, used: 9 }], 100, 40), undefined);
+    const shape = sparkShape([{ at: 0, used: 0 }, { at: 10, used: 100 }], 100, 40, 0);
+    assert.ok(shape !== undefined);
+    assert.equal(shape.line, "M0 40 L100 0");
+    assert.deepEqual(shape.end, { x: 100, y: 0 });
+    assert.ok(shape.area.endsWith("Z"));
+  });
+
+  it("descreve a tendência em texto", () => {
+    assert.equal(
+      trendLabel([{ at: 1, used: 10 }, { at: 2, used: 42 }]),
+      "Tendência: de 10% a 42% em 2 leituras.",
+    );
+    assert.equal(trendLabel([]), "");
   });
 });

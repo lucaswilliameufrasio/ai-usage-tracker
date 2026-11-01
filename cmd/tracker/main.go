@@ -28,14 +28,14 @@ func main() {
 			os.Exit(maintenance(os.Args[1], os.Args[2:]))
 		}
 	}
-	addr := flag.String("addr", env("TRACKER_ADDR", "127.0.0.1:8787"), "endereço de escuta")
-	data := flag.String("data", env("TRACKER_DATA_DIR", "data"), "diretório do SQLite e das chaves locais")
-	web := flag.String("web", env("TRACKER_WEB_DIR", ""), "diretório do PWA compilado")
+	addr := flag.String("addr", env("TRACKER_ADDR", "127.0.0.1:8787"), "listen address")
+	data := flag.String("data", env("TRACKER_DATA_DIR", "data"), "directory for SQLite and local keys")
+	web := flag.String("web", env("TRACKER_WEB_DIR", ""), "directory of the built PWA")
 	flag.Parse()
 	_ = mime.AddExtensionType(".webmanifest", "application/manifest+json")
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	if err := os.MkdirAll(*data, 0o700); err != nil {
-		logger.Error("dados", "err", "diretório")
+		logger.Error("data", "err", "directory")
 		os.Exit(1)
 	}
 	db, err := store.Open(filepath.Join(*data, "tracker.db"))
@@ -53,20 +53,20 @@ func main() {
 	boxes := vault.OpenConfigured(os.Getenv, *data)
 	kind, err := db.SecretBackend()
 	if err != nil {
-		logger.Error("cofre", "err", "backend")
+		logger.Error("vault", "err", "backend")
 		os.Exit(1)
 	}
 	box := boxes[kind]
 	if access.EnvTouched(loginEnv) {
 		if box == nil {
-			logger.Error("login", "err", "cofre fechado")
+			logger.Error("login", "err", "vault closed")
 			os.Exit(1)
 		}
 		if err := access.Seed(context.Background(), db, box, loginEnv, time.Now().UTC()); err != nil {
 			if errors.Is(err, access.ErrIncomplete) {
-				logger.Error("login", "err", "ambiente incompleto")
+				logger.Error("login", "err", "incomplete environment")
 			} else {
-				logger.Error("login", "err", "semeadura")
+				logger.Error("login", "err", "seeding")
 			}
 			os.Exit(1)
 		}
@@ -106,17 +106,17 @@ func main() {
 				return
 			case <-ticker.C:
 				if err := server.FlushDue(); err != nil {
-					logger.Error("avisos")
+					logger.Error("notifications")
 				}
 			}
 		}
 	}()
 	if err := server.FlushDue(); err != nil {
-		logger.Error("avisos")
+		logger.Error("notifications")
 	}
-	logger.Info("escuta", "addr", *addr)
+	logger.Info("listening", "addr", *addr)
 	if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		logger.Error("servidor")
+		logger.Error("server")
 		os.Exit(1)
 	}
 }

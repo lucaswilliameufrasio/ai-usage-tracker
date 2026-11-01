@@ -222,7 +222,7 @@ func sqlString(path string) string {
 
 func FormatCensus(census Census) string {
 	return fmt.Sprintf(
-		"versao=%d contas=%d dispositivos=%d amostras=%d sessoes=%d provedores=%d\n",
+		"version=%d accounts=%d devices=%d samples=%d sessions=%d providers=%d\n",
 		census.UserVersion,
 		census.Accounts,
 		census.Devices,

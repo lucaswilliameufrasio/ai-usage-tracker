@@ -34,7 +34,7 @@ func TestInstallerRejectsBadChecksumAndInstallsAMatchingArchive(t *testing.T) {
 	t.Cleanup(server.Close)
 	binDir := t.TempDir()
 	bad := runInstaller(t, root, server.URL, binDir, true)
-	if bad.exit == 0 || !strings.Contains(bad.output, "Checksum não confere") {
+	if bad.exit == 0 || !strings.Contains(bad.output, "Checksum mismatch") {
 		t.Fatalf("checksum ruim saiu %d: %s", bad.exit, bad.output)
 	}
 	if _, err := os.Stat(filepath.Join(binDir, "ai-usage")); !os.IsNotExist(err) {
@@ -57,7 +57,7 @@ func TestInstallerRejectsBadChecksumAndInstallsAMatchingArchive(t *testing.T) {
 	}
 
 	again := runInstaller(t, root, server.URL, binDir, false)
-	if again.exit == 0 || !strings.Contains(again.output, "Sem terminal") {
+	if again.exit == 0 || !strings.Contains(again.output, "No terminal") {
 		t.Fatalf("reinstalação sem --force saiu %d: %s", again.exit, again.output)
 	}
 	kept, err := os.ReadFile(filepath.Join(binDir, "ai-usage"))
@@ -71,14 +71,14 @@ func TestInstallerRejectsBadChecksumAndInstallsAMatchingArchive(t *testing.T) {
 
 func TestInstallerRejectsAnUnstableTag(t *testing.T) {
 	result := runInstallerArgs(t, repoRoot(t), []string{"--tag", "v1", "--base-url", "http://127.0.0.1:9"}, t.TempDir(), false)
-	if result.exit == 0 || !strings.Contains(result.output, "Tag de release estável inválida") {
+	if result.exit == 0 || !strings.Contains(result.output, "Invalid stable release tag") {
 		t.Fatalf("tag %d: %s", result.exit, result.output)
 	}
 }
 
 func TestInstallerRequiresATagForBaseURL(t *testing.T) {
 	result := runInstallerArgs(t, repoRoot(t), []string{"--base-url", "http://127.0.0.1:9"}, t.TempDir(), false)
-	if result.exit == 0 || !strings.Contains(result.output, "Informe --tag ao usar --base-url") {
+	if result.exit == 0 || !strings.Contains(result.output, "Pass --tag when using --base-url") {
 		t.Fatalf("base sem tag saiu %d: %s", result.exit, result.output)
 	}
 }
@@ -107,7 +107,7 @@ func TestPackagedAgentInstalls(t *testing.T) {
 	if agent.ProcessState == nil || agent.ProcessState.ExitCode() != 2 {
 		t.Fatalf("uso saiu %v: %s", err, raw)
 	}
-	if !strings.Contains(string(raw), "uso: ai-usage enroll | ai-usage run | ai-usage setup") {
+	if !strings.Contains(string(raw), "usage: ai-usage enroll | ai-usage run | ai-usage setup | ai-usage service") {
 		t.Fatalf("uso %q", raw)
 	}
 }

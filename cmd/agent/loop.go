@@ -17,14 +17,14 @@ const (
 	passBudget  = 40 * time.Second
 )
 
-var errToken = errors.New("token ilegível")
+var errToken = errors.New("token unreadable")
 
 var applyUpdate = agent.ApplyUpdate
 
 func executeLoop(file agent.File) {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	fmt.Fprintln(os.Stderr, "o agente repete a cada 5 minutos; Ctrl+C espera o envio atual e mantém a fila")
+	fmt.Fprintln(os.Stderr, "the agent repeats every 5 minutes; Ctrl+C waits for the current send and keeps the queue")
 	os.Exit(runPasses(ctx, repeatEvery, passBudget, passWithUpdate(ctx, file, func(sendCtx context.Context) (agent.Result, error) {
 		return runFile(sendCtx, file)
 	}), waitInterruptible))
@@ -40,7 +40,7 @@ func passWithUpdate(signalCtx context.Context, file agent.File, send func(contex
 				return agent.Result{}, nil
 			}
 			if err != nil {
-				fmt.Fprintln(os.Stderr, "atualização ignorada; o envio segue")
+				fmt.Fprintln(os.Stderr, "update skipped; the send continues")
 			}
 		}
 		return send(sendCtx)

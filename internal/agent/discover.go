@@ -23,29 +23,29 @@ func Suggest(home string, now time.Time) (Place, Place) {
 
 func DescribeClaude(path string, now time.Time) string {
 	if path == "" {
-		return "Nenhum arquivo sugerido."
+		return "No file suggested."
 	}
 	if _, err := os.Stat(path); err != nil {
-		return "Esse caminho não existe."
+		return "That path does not exist."
 	}
 	batch, err := collect.Read(collect.Request{ClaudeFile: path, Now: now})
 	if err != nil {
-		return "Não foi possível ler esse caminho."
+		return "Could not read that path."
 	}
 	return describe(batch, contract.ProviderClaude, "")
 }
 
 func DescribeCodex(path string, now time.Time) string {
 	if path == "" {
-		return "Nenhuma pasta sugerida."
+		return "No folder suggested."
 	}
 	info, err := os.Stat(path)
 	if err != nil || !info.IsDir() {
-		return "Esse caminho não existe."
+		return "That path does not exist."
 	}
 	batch, err := collect.Read(collect.Request{CodexDir: path, Now: now})
 	if err != nil {
-		return "Não foi possível ler esse caminho."
+		return "Could not read that path."
 	}
 	return describe(batch, contract.ProviderCodex, path)
 }
@@ -59,9 +59,9 @@ func describe(batch collect.Batch, provider string, codexDir string) string {
 		if sample.SourceObservedAt != nil {
 			when = sample.SourceObservedAt.UTC()
 		}
-		detail := "Limite encontrado, observado em " + when.In(time.Local).Format("02/01/2006 15:04 MST") + "."
+		detail := "Limit found, observed at " + when.In(time.Local).Format("2006-01-02 15:04 MST") + "."
 		if provider == contract.ProviderCodex && newerSessionWithoutLimits(codexDir, when) {
-			detail += " Sessões mais novas não trouxeram rate_limits."
+			detail += " Newer sessions carried no rate_limits."
 		}
 		return detail
 	}
@@ -71,17 +71,17 @@ func describe(batch collect.Batch, provider string, codexDir string) string {
 		}
 		return reasonText(report.ReasonCode)
 	}
-	return "Nenhum limite gravado nesse caminho."
+	return "No limit recorded at that path."
 }
 
 func reasonText(code string) string {
 	if code == contract.ReasonSourceUnreadable {
-		return "Não foi possível ler esse caminho."
+		return "Could not read that path."
 	}
 	if code == contract.ReasonResetUnknown {
-		return "O limite está sem horário de reset."
+		return "The limit has no reset time."
 	}
-	return "Nenhum limite gravado nesse caminho."
+	return "No limit recorded at that path."
 }
 
 func newerSessionWithoutLimits(dir string, observed time.Time) bool {

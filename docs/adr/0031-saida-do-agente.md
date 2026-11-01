@@ -13,7 +13,11 @@ Depois de cada passagem o agente escrevia só contadores: `aceitas 2 duplicadas 
 - `agent.Result` ganha `Outcomes`. Cada item enviado vira `Outcome{Kind, Provider, Status, Code}`. `Status` é `accepted`, `duplicate`, `rejected`, `pending` ou `blocked`. `Code` é o `error_code` da API numa rejeição.
 - O provedor sai do corpo canônico do item. Nada novo é lido do disco nem enviado ao servidor.
 - O comando escreve uma linha por item, `provedor tipo estado [code=...]`, e termina com `total accepted=N duplicate=N rejected=N pending=N`. Os campos são chaves fixas em inglês, fáceis de filtrar com `grep`.
-- As mensagens da função `report` passam a inglês. Não há i18n: o comando escreve num único idioma. As demais mensagens do agente (setup, enrolamento, uso) continuam em português até haver decisão sobre elas.
+- Regra: sem i18n, tudo que vai para terminal ou log é inglês. Isso vale para o agente (`report`, setup, enrolamento, uso e erros de atualização), para o `tracker` (flags, logs do `slog`, backup e restauração), para a linha de resumo do backup e para o `agent-installer.sh`. O `package-agent.sh` já era assim.
+- No assistente de setup e no instalador, a resposta afirmativa passa de `s` para `y`.
+- O texto que a pessoa lê no painel (PWA) e as mensagens de erro da API que chegam à tela continuam em pt-BR. São produto, não log.
+- A linha de resumo do backup passa a `version= accounts= devices= samples= sessions= providers=`.
+- Datas escritas pelo agente seguem `2006-01-02 15:04 MST`.
 
 ## Alternativas rejeitadas
 
@@ -22,7 +26,7 @@ Depois de cada passagem o agente escrevia só contadores: `aceitas 2 duplicadas 
 
 ## Consequências
 
-Quem lia `aceitas`, `duplicadas`, `rejeitadas` e `pendentes` em script precisa trocar para `accepted`, `duplicate`, `rejected` e `pending`. Não há outro consumidor no repositório.
+Quem lia o log do agente, o resumo do backup ou o prompt `[s/N]` do instalador em script precisa trocar para as chaves e respostas novas. Não há outro consumidor no repositório. O instalador já publicado na `v0.3.0` ainda fala português.
 
 ## Quando revisitar
 

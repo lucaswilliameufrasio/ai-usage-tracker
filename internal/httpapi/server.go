@@ -272,7 +272,7 @@ func (s *Server) ingestSample(w http.ResponseWriter, r *http.Request, device sto
 	}
 	if created {
 		if err := s.planAlerts(sample); err != nil {
-			s.Logger.Error("alerta", "provider", sample.Provider, "sample_id", sample.SampleID)
+			s.Logger.Error("alert", "provider", sample.Provider, "sample_id", sample.SampleID)
 		}
 	}
 	status := http.StatusOK

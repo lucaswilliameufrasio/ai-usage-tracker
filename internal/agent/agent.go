@@ -40,8 +40,8 @@ type Result struct {
 	Outcomes  []Outcome
 }
 
-// Outcome diz o que aconteceu com um item da fila neste envio.
-// Status é accepted, duplicate, rejected, pending ou blocked.
+// Outcome says what happened to one queued item in this send.
+// Status is accepted, duplicate, rejected, pending or blocked.
 type Outcome struct {
 	Kind     string
 	Provider string

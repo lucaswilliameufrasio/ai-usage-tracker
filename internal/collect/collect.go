@@ -452,7 +452,7 @@ func rolloutFiles(dir string) ([]string, error) {
 		return nil, err
 	}
 	if !info.IsDir() {
-		return nil, fmt.Errorf("diretório de rollouts ilegível")
+		return nil, fmt.Errorf("rollouts directory unreadable")
 	}
 	type fileInfo struct {
 		path string

@@ -63,7 +63,7 @@ func TestUpdateReplacesExecutableAfterChecksum(t *testing.T) {
 	server := httptest.NewServer(hostOnly(pub))
 	t.Cleanup(server.Close)
 	bad := ApplyUpdate(context.Background(), updateOpts(server, binary, "0.1.0", "v0.2.0"))
-	if bad == nil || bad.Error() != "checksum não confere" {
+	if bad == nil || bad.Error() != "checksum mismatch" {
 		t.Fatal(bad)
 	}
 	kept, err := os.ReadFile(binary)

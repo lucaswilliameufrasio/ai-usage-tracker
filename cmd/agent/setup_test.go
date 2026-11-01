@@ -49,8 +49,8 @@ func TestWizardAcceptsSuggestionsWithoutRepeatingSecrets(t *testing.T) {
 	if strings.Contains(shown, "codigo-teste") || strings.Contains(shown, "41") || strings.Contains(shown, "25") {
 		t.Fatal("a tela repetiu código ou percentual")
 	}
-	codexWhen := time.Date(2026, 9, 20, 15, 0, 0, 0, time.UTC).In(time.Local).Format("02/01/2006 15:04 MST")
-	if !strings.Contains(shown, codexWhen) || !strings.Contains(shown, "Atualização automática desligada.") || !strings.Contains(shown, "Antigravity desligado.") {
+	codexWhen := time.Date(2026, 9, 20, 15, 0, 0, 0, time.UTC).In(time.Local).Format("2006-01-02 15:04 MST")
+	if !strings.Contains(shown, codexWhen) || !strings.Contains(shown, "Automatic update off.") || !strings.Contains(shown, "Antigravity off.") {
 		t.Fatal(shown)
 	}
 }
@@ -58,7 +58,7 @@ func TestWizardAcceptsSuggestionsWithoutRepeatingSecrets(t *testing.T) {
 func TestWizardCanEnableAutoUpdate(t *testing.T) {
 	home := t.TempDir()
 	var screen strings.Builder
-	input := strings.NewReader("http://127.0.0.1:8787\n\ncodigo-teste\n\n\n\ns\n\n")
+	input := strings.NewReader("http://127.0.0.1:8787\n\ncodigo-teste\n\n\n\ny\n\n")
 	file, code, _, err := runWizard(wizardOptions{
 		in:        input,
 		out:       &screen,
@@ -78,7 +78,7 @@ func TestWizardCanEnableAutoUpdate(t *testing.T) {
 	if strings.Contains(shown, "codigo-teste") || strings.Contains(shown, "41") || strings.Contains(shown, "25") {
 		t.Fatal("a tela repetiu código ou percentual")
 	}
-	if !strings.Contains(shown, "Atualização automática ligada.") {
+	if !strings.Contains(shown, "Automatic update on.") {
 		t.Fatal(shown)
 	}
 }
@@ -86,7 +86,7 @@ func TestWizardCanEnableAutoUpdate(t *testing.T) {
 func TestWizardCanEnableAntigravity(t *testing.T) {
 	home := t.TempDir()
 	var screen strings.Builder
-	input := strings.NewReader("http://127.0.0.1:8787\n\ncodigo-teste\n\n\ns\n\n\n")
+	input := strings.NewReader("http://127.0.0.1:8787\n\ncodigo-teste\n\n\ny\n\n\n")
 	file, _, _, err := runWizard(wizardOptions{
 		in:        input,
 		out:       &screen,
@@ -106,7 +106,7 @@ func TestWizardCanEnableAntigravity(t *testing.T) {
 	if strings.Contains(shown, "codigo-teste") || strings.Contains(shown, "41") || strings.Contains(shown, "25") {
 		t.Fatal("a tela repetiu código ou percentual")
 	}
-	if !strings.Contains(shown, "Antigravity ligado.") {
+	if !strings.Contains(shown, "Antigravity on.") {
 		t.Fatal(shown)
 	}
 }

@@ -16,7 +16,7 @@ import (
 	"github.com/mattn/go-isatty"
 )
 
-var errWizardCancelled = errors.New("setup cancelado")
+var errWizardCancelled = errors.New("setup cancelled")
 
 type runMode int
 
@@ -73,33 +73,33 @@ func runWizard(opts wizardOptions) (agent.File, string, string, error) {
 	}
 	nameDefault := "notebook"
 	for {
-		api, err := ask(reader, opts, "Servidor", "Endereço do rastreador, como você abre no navegador.", current.API, false, false)
+		api, err := ask(reader, opts, "Server", "Tracker address, as you open it in the browser.", current.API, false, false)
 		if err != nil {
 			return agent.File{}, "", "", err
 		}
 		if !validAPI(api) {
-			fmt.Fprintln(opts.out, "Endereço inválido. Use http:// ou https://.")
+			fmt.Fprintln(opts.out, "Invalid address. Use http:// or https://.")
 			continue
 		}
-		name, err := ask(reader, opts, "Dispositivo", "Nome deste aparelho.", nameDefault, false, false)
+		name, err := ask(reader, opts, "Device", "Name of this device.", nameDefault, false, false)
 		if err != nil {
 			return agent.File{}, "", "", err
 		}
 		nameDefault = name
 		code := ""
 		if !tokenReady(opts.tokenPath) {
-			code, err = ask(reader, opts, "Código", "Gere um código em Dispositivos e cole aqui. Ele não fica gravado na configuração.", "", false, false)
+			code, err = ask(reader, opts, "Code", "Create a code under Devices and paste it here. It is not saved in the configuration.", "", false, false)
 			if err != nil {
 				return agent.File{}, "", "", err
 			}
 		}
-		claudeBody := "Arquivo do Claude.\n" + agent.DescribeClaude(current.ClaudeFile, opts.now)
+		claudeBody := "Claude file.\n" + agent.DescribeClaude(current.ClaudeFile, opts.now)
 		claude, err := ask(reader, opts, "Claude", claudeBody, current.ClaudeFile, true, true)
 		if err != nil {
 			return agent.File{}, "", "", err
 		}
 		claude = expandPath(opts.home, claude)
-		codexBody := "Pasta do Codex. O envio pergunta o limite ao comando local codex. Esta pasta fica de reserva quando essa leitura falha.\n" + agent.DescribeCodex(current.CodexDir, opts.now)
+		codexBody := "Codex folder. Each run asks the local codex command for the limit. This folder is the fallback when that read fails.\n" + agent.DescribeCodex(current.CodexDir, opts.now)
 		codex, err := ask(reader, opts, "Codex", codexBody, current.CodexDir, true, true)
 		if err != nil {
 			return agent.File{}, "", "", err
@@ -110,7 +110,7 @@ func runWizard(opts wizardOptions) (agent.File, string, string, error) {
 			return agent.File{}, "", "", err
 		}
 		if claude == "" && codex == "" && agyCommand == "" {
-			fmt.Fprintln(opts.out, "Informe o Claude, o Codex ou o Antigravity.")
+			fmt.Fprintln(opts.out, "Provide Claude, Codex or Antigravity.")
 			continue
 		}
 		updateOn, err := askUpdate(reader, opts, current.AutoUpdate)
@@ -139,19 +139,19 @@ func runWizard(opts wizardOptions) (agent.File, string, string, error) {
 }
 
 func confirm(reader *bufio.Reader, opts wizardOptions, file agent.File, enrolling bool) (bool, error) {
-	tokenLine := "O token deste aparelho já está gravado."
+	tokenLine := "This device's token is already saved."
 	if enrolling {
-		tokenLine = "Um código novo vai enrolar este aparelho."
+		tokenLine = "A new code will enroll this device."
 	}
-	updateLine := "Atualização automática desligada."
+	updateLine := "Automatic update off."
 	if file.AutoUpdate {
-		updateLine = "Atualização automática ligada."
+		updateLine = "Automatic update on."
 	}
-	agyLine := "Antigravity desligado."
+	agyLine := "Antigravity off."
 	if file.AgyCommand != "" {
-		agyLine = "Antigravity ligado."
+		agyLine = "Antigravity on."
 	}
-	body := fmt.Sprintf("Servidor\n%s\n\nClaude\n%s\n%s\n\nCodex\n%s\n%s\n\n%s\n\n%s\n\n%s\nO próximo run sem flags envia direto.",
+	body := fmt.Sprintf("Server\n%s\n\nClaude\n%s\n%s\n\nCodex\n%s\n%s\n\n%s\n\n%s\n\n%s\nThe next run without flags sends directly.",
 		file.API,
 		emptyPath(file.ClaudeFile),
 		agent.DescribeClaude(file.ClaudeFile, opts.now),
@@ -161,7 +161,7 @@ func confirm(reader *bufio.Reader, opts wizardOptions, file agent.File, enrollin
 		updateLine,
 		tokenLine,
 	)
-	paint(opts.out, opts.interactive, "Confirmar", body, "Enter grava e envia. n refaz. q cancela.")
+	paint(opts.out, opts.interactive, "Confirm", body, "Enter saves and sends. n starts over. q cancels.")
 	line, err := readLine(reader)
 	if err != nil {
 		return false, err
@@ -169,19 +169,19 @@ func confirm(reader *bufio.Reader, opts wizardOptions, file agent.File, enrollin
 	if line == "q" {
 		return false, errWizardCancelled
 	}
-	if line == "" || line == "s" {
+	if line == "" || line == "y" {
 		return true, nil
 	}
 	return false, nil
 }
 
 func askAgy(reader *bufio.Reader, opts wizardOptions, current string) (string, error) {
-	state := "desligado"
+	state := "off"
 	if strings.TrimSpace(current) != "" {
-		state = "ligado"
+		state = "on"
 	}
 	for {
-		paint(opts.out, opts.interactive, "Antigravity", "O comando agy informa a janela do plano. O rastreador não lê o token. Agora está "+state+".", "Enter mantém. s liga. n desliga. q cancela.")
+		paint(opts.out, opts.interactive, "Antigravity", "The agy command reports the plan window. The tracker does not read the token. It is currently "+state+".", "Enter keeps. y turns on. n turns off. q cancels.")
 		line, err := readLine(reader)
 		if err != nil {
 			return "", err
@@ -192,23 +192,23 @@ func askAgy(reader *bufio.Reader, opts wizardOptions, current string) (string, e
 		if line == "" {
 			return current, nil
 		}
-		if line == "s" {
+		if line == "y" {
 			return "agy", nil
 		}
 		if line == "n" {
 			return "", nil
 		}
-		fmt.Fprintln(opts.out, "Responda s, n ou Enter.")
+		fmt.Fprintln(opts.out, "Answer y, n or Enter.")
 	}
 }
 
 func askUpdate(reader *bufio.Reader, opts wizardOptions, current bool) (bool, error) {
-	state := "desligada"
+	state := "off"
 	if current {
-		state = "ligada"
+		state = "on"
 	}
 	for {
-		paint(opts.out, opts.interactive, "Atualização", "Cada passagem pode conferir a release estável antes de enviar. Agora está "+state+".", "Enter mantém. s liga. n desliga. q cancela.")
+		paint(opts.out, opts.interactive, "Update", "Each pass can check the stable release before sending. It is currently "+state+".", "Enter keeps. y turns on. n turns off. q cancels.")
 		line, err := readLine(reader)
 		if err != nil {
 			return false, err
@@ -219,28 +219,28 @@ func askUpdate(reader *bufio.Reader, opts wizardOptions, current bool) (bool, er
 		if line == "" {
 			return current, nil
 		}
-		if line == "s" {
+		if line == "y" {
 			return true, nil
 		}
 		if line == "n" {
 			return false, nil
 		}
-		fmt.Fprintln(opts.out, "Responda s, n ou Enter.")
+		fmt.Fprintln(opts.out, "Answer y, n or Enter.")
 	}
 }
 
 func ask(reader *bufio.Reader, opts wizardOptions, title string, body string, current string, allowEmpty bool, allowClear bool) (string, error) {
 	for {
-		hint := "Escreva o valor. q cancela."
+		hint := "Type the value. q cancels."
 		if current != "" {
-			hint = "Enter aceita o sugerido. Um texto troca. q cancela."
+			hint = "Enter accepts the suggestion. Typing replaces it. q cancels."
 		}
 		if allowClear && current != "" {
-			hint = "Enter aceita o sugerido. Um texto troca. - deixa vazio. q cancela."
+			hint = "Enter accepts the suggestion. Typing replaces it. - clears it. q cancels."
 		}
 		shown := body
 		if current != "" {
-			shown += "\n\nSugerido: " + current
+			shown += "\n\nSuggested: " + current
 		}
 		paint(opts.out, opts.interactive, title, shown, hint)
 		line, err := readLine(reader)
@@ -254,7 +254,7 @@ func ask(reader *bufio.Reader, opts wizardOptions, title string, body string, cu
 			if current != "" || allowEmpty {
 				return current, nil
 			}
-			fmt.Fprintln(opts.out, "Precisa de um valor.")
+			fmt.Fprintln(opts.out, "A value is required.")
 			continue
 		}
 		if line == "-" && allowClear {
@@ -268,7 +268,7 @@ func paint(out io.Writer, interactive bool, title string, body string, hint stri
 	if interactive {
 		fmt.Fprint(out, "\033[H\033[2J")
 	}
-	fmt.Fprintf(out, "Agente do rastreador — %s\n\n%s\n\n%s\n> ", title, body, hint)
+	fmt.Fprintf(out, "Tracker agent — %s\n\n%s\n\n%s\n> ", title, body, hint)
 }
 
 func readLine(reader *bufio.Reader) (string, error) {
@@ -306,7 +306,7 @@ func expandPath(home string, value string) string {
 
 func emptyPath(value string) string {
 	if value == "" {
-		return "não usado"
+		return "not used"
 	}
 	return value
 }

@@ -62,7 +62,7 @@ func ApplyUpdate(ctx context.Context, opts UpdateOptions) error {
 func resolveTag(ctx context.Context, opts UpdateOptions) (string, error) {
 	if opts.Tag != "" {
 		if !stableTag(opts.Tag) {
-			return "", errors.New("tag de release estável inválida")
+			return "", errors.New("invalid stable release tag")
 		}
 		return opts.Tag, nil
 	}
@@ -78,7 +78,7 @@ func resolveTag(ctx context.Context, opts UpdateOptions) (string, error) {
 		TagName string `json:"tag_name"`
 	}
 	if err := json.Unmarshal(raw, &body); err != nil || !stableTag(body.TagName) {
-		return "", errors.New("não foi possível ler a release")
+		return "", errors.New("could not read the release")
 	}
 	return body.TagName, nil
 }
@@ -99,7 +99,7 @@ func installRelease(ctx context.Context, opts UpdateOptions, base string, versio
 	}
 	want, ok := checksumFor(string(checksums), asset)
 	if !ok {
-		return errors.New("checksum ausente ou inválido")
+		return errors.New("checksum missing or invalid")
 	}
 	archive, err := getBytes(ctx, opts.Client, base+"/"+asset, archiveLimit, "application/octet-stream")
 	if err != nil {
@@ -107,7 +107,7 @@ func installRelease(ctx context.Context, opts UpdateOptions, base string, versio
 	}
 	sum := sha256.Sum256(archive)
 	if hex.EncodeToString(sum[:]) != want {
-		return errors.New("checksum não confere")
+		return errors.New("checksum mismatch")
 	}
 	payload, err := extractAgent(archive)
 	if err != nil {
@@ -122,21 +122,21 @@ func getBytes(ctx context.Context, client *http.Client, url string, limit int64,
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, errors.New("não foi possível baixar a release")
+		return nil, errors.New("could not download the release")
 	}
 	req.Header.Set("User-Agent", "ai-usage-tracker")
 	req.Header.Set("Accept", accept)
 	res, err := client.Do(req)
 	if err != nil {
-		return nil, errors.New("não foi possível baixar a release")
+		return nil, errors.New("could not download the release")
 	}
 	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode != http.StatusOK {
-		return nil, errors.New("não foi possível baixar a release")
+		return nil, errors.New("could not download the release")
 	}
 	raw, err := io.ReadAll(io.LimitReader(res.Body, limit+1))
 	if err != nil || int64(len(raw)) > limit {
-		return nil, errors.New("não foi possível baixar a release")
+		return nil, errors.New("could not download the release")
 	}
 	return raw, nil
 }
@@ -163,7 +163,7 @@ func checksumFor(raw string, asset string) (string, bool) {
 func extractAgent(raw []byte) ([]byte, error) {
 	gz, err := gzip.NewReader(bytes.NewReader(raw))
 	if err != nil {
-		return nil, errors.New("pacote ilegível")
+		return nil, errors.New("package unreadable")
 	}
 	defer func() { _ = gz.Close() }()
 	reader := tar.NewReader(io.LimitReader(gz, archiveLimit))
@@ -173,24 +173,24 @@ func extractAgent(raw []byte) ([]byte, error) {
 			break
 		}
 		if err != nil {
-			return nil, errors.New("pacote ilegível")
+			return nil, errors.New("package unreadable")
 		}
 		if header.Name != releaseCommand {
 			continue
 		}
 		if header.Typeflag != tar.TypeReg && header.Typeflag != 0 {
-			return nil, fmt.Errorf("o pacote não contém %s", releaseCommand)
+			return nil, fmt.Errorf("the package does not contain %s", releaseCommand)
 		}
 		if header.Size <= 0 || header.Size > archiveLimit {
 			return nil, errors.New("pacote grande demais")
 		}
 		payload, err := io.ReadAll(io.LimitReader(reader, archiveLimit+1))
 		if err != nil || int64(len(payload)) != header.Size {
-			return nil, errors.New("pacote ilegível")
+			return nil, errors.New("package unreadable")
 		}
 		return payload, nil
 	}
-	return nil, fmt.Errorf("o pacote não contém %s", releaseCommand)
+	return nil, fmt.Errorf("the package does not contain %s", releaseCommand)
 }
 
 func swapExecutable(opts UpdateOptions, payload []byte) error {
@@ -198,32 +198,32 @@ func swapExecutable(opts UpdateOptions, payload []byte) error {
 	if path == "" {
 		found, err := os.Executable()
 		if err != nil {
-			return errors.New("não foi possível achar o executável")
+			return errors.New("could not find the executable")
 		}
 		path = found
 	}
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".agent-new-*")
 	if err != nil {
-		return errors.New("não foi possível substituir o executável")
+		return errors.New("could not replace the executable")
 	}
 	name := tmp.Name()
 	if _, err := tmp.Write(payload); err != nil {
 		_ = tmp.Close()
 		_ = os.Remove(name)
-		return errors.New("não foi possível substituir o executável")
+		return errors.New("could not replace the executable")
 	}
 	if err := tmp.Chmod(0o755); err != nil {
 		_ = tmp.Close()
 		_ = os.Remove(name)
-		return errors.New("não foi possível substituir o executável")
+		return errors.New("could not replace the executable")
 	}
 	if err := tmp.Close(); err != nil {
 		_ = os.Remove(name)
-		return errors.New("não foi possível substituir o executável")
+		return errors.New("could not replace the executable")
 	}
 	if err := os.Rename(name, path); err != nil {
 		_ = os.Remove(name)
-		return errors.New("não foi possível substituir o executável")
+		return errors.New("could not replace the executable")
 	}
 	execFn := opts.Exec
 	if execFn == nil {
@@ -238,7 +238,7 @@ func swapExecutable(opts UpdateOptions, payload []byte) error {
 		env = os.Environ()
 	}
 	if err := execFn(path, args, env); err != nil {
-		return errors.New("não foi possível reiniciar o agente")
+		return errors.New("could not restart the agent")
 	}
 	return nil
 }

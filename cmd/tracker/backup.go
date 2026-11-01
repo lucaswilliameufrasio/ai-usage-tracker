@@ -14,13 +14,13 @@ import (
 func runBackup(args []string, stdout io.Writer) error {
 	flags := flag.NewFlagSet("backup", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	data := flags.String("data", "data", "diretório do SQLite")
-	out := flags.String("out", "", "arquivo do snapshot")
+	data := flags.String("data", "data", "SQLite directory")
+	out := flags.String("out", "", "snapshot file")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
 	if *out == "" {
-		return errors.New("backup exige --out")
+		return errors.New("backup requires --out")
 	}
 	source := filepath.Join(*data, "tracker.db")
 	if err := store.SameTarget(source, *out); err != nil {
@@ -45,13 +45,13 @@ func runBackup(args []string, stdout io.Writer) error {
 func runRestore(args []string, stdout io.Writer) error {
 	flags := flag.NewFlagSet("restore", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	snapshot := flags.String("snapshot", "", "arquivo do snapshot")
-	dest := flags.String("dest", "", "diretório novo da restauração")
+	snapshot := flags.String("snapshot", "", "snapshot file")
+	dest := flags.String("dest", "", "new directory for the restore")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
 	if *snapshot == "" || *dest == "" {
-		return errors.New("restore exige --snapshot e --dest")
+		return errors.New("restore requires --snapshot and --dest")
 	}
 	census, err := store.Restore(*snapshot, *dest)
 	if err != nil {
@@ -64,17 +64,17 @@ func runRestore(args []string, stdout io.Writer) error {
 func explainMaintenance(err error) string {
 	switch {
 	case errors.Is(err, store.ErrSnapshotExists):
-		return "O destino do snapshot já existe."
+		return "The snapshot destination already exists."
 	case errors.Is(err, store.ErrSnapshotSame):
-		return "O snapshot não pode substituir o banco em uso."
+		return "The snapshot cannot replace the database in use."
 	case errors.Is(err, store.ErrRestoreExists):
-		return "A restauração só grava num diretório sem banco."
+		return "A restore only writes into a directory without a database."
 	case errors.Is(err, store.ErrSnapshotInvalid):
-		return "O snapshot não passou na verificação."
+		return "The snapshot failed verification."
 	case errors.Is(err, store.ErrSnapshotDest):
-		return "O caminho do backup não serve."
+		return "The backup path is not usable."
 	default:
-		return "A operação de backup não foi concluída."
+		return "The backup operation did not complete."
 	}
 }
 

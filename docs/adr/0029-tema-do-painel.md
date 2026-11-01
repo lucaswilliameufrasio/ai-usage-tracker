@@ -2,7 +2,7 @@
 
 - Status: aceito
 - Data: 2026-10-31
-- Atualização 2026-10-31: a primeira tela ainda esticava a régua na janela larga. A leitura passou a ter coluna máxima, painel próprio e a régua como canal.
+- Atualização 2026-10-31: a leitura é um instrumento de largura máxima. O percentual lidera cada janela e a régua fica sob o número.
 - Relacionado: ADR 0026
 
 ## Contexto
@@ -13,8 +13,8 @@ A busca de sistema visual da ferramenta devolveu modo escuro OLED, índigo `#433
 
 ## Decisão
 
-- A leitura fica numa coluna de no máximo 62rem, dentro de um painel. A régua é um canal nesse painel e não cresce com a janela. O nome da janela fica ao lado; o percentual, o reinício e a régua ocupam a largura do painel. O controle de tema fica junto da navegação, não no fundo de um trilho vazio. O estado da leitura fica na mesma linha do provedor.
-- Claro e escuro são duas escalas de superfície: o fundo é mais fundo que o painel. O trilho usa o fundo. O acento continua verde e aparece na régua, na ação principal, no foco e na seção selecionada.
+- O aplicativo cabe em 68rem e fica no centro de um campo mais fundo. O percentual lidera a janela, em tipo grande. O nome e o reinício ficam na linha de cima. A régua fica sob o número, com a marca de 80% no intervalo entre os dois. O controle de tema é um só bloco junto da navegação. O estado da leitura fica na mesma linha do provedor.
+- Claro e escuro são duas escalas. O campo em volta é mais fundo que o instrumento. O acento continua verde e aparece na régua, na ação principal, no foco, na seção selecionada e na opção de tema escolhida.
 - A busca automática devolveu um kit de marketing, com índigo, violeta, Inter e uma página de apresentação. Fica rejeitado.
 - Não há fonte baixada de uma CDN. A família é a do sistema.
 - A escolha é um único valor: `system`, `light` ou `dark`. O padrão é `system`, lido de `prefers-color-scheme`. Fica em `localStorage` na chave `ai-usage-theme`, por navegador, não por conta.

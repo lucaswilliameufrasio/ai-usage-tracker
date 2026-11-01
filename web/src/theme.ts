@@ -30,9 +30,9 @@ export function resolveTheme(choice: ThemeChoice, systemIsDark: boolean): "light
 
 export function themeColor(resolved: "light" | "dark"): string {
   if (resolved === "dark") {
-    return "#070a0e";
+    return "#343f4e";
   }
-  return "#d7e0ea";
+  return "#f7f9fb";
 }
 
 export function prefersDark(view: Window): boolean {

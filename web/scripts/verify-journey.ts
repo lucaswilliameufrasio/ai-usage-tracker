@@ -240,7 +240,7 @@ async function writePreview(file: string, body: string, theme: "light" | "dark")
   const attr = theme === "dark"
     ? ' data-theme="dark" style="color-scheme: dark"'
     : ' data-theme="light" style="color-scheme: light"';
-  const color = theme === "dark" ? "#070a0e" : "#d7e0ea";
+  const color = theme === "dark" ? "#343f4e" : "#f7f9fb";
   const page = `<!doctype html><html lang="pt-BR"${attr}><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="${color}"><link rel="stylesheet" href="${css[1]}"></head><body><div id="app">${body}</div></body></html>`;
   await writeFile(file, page);
 }

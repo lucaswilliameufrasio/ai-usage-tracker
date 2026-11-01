@@ -37,6 +37,34 @@ type Result struct {
 	Blocked   bool
 	CodexLive string
 	AgyLive   string
+	Outcomes  []Outcome
+}
+
+// Outcome diz o que aconteceu com um item da fila neste envio.
+// Status é accepted, duplicate, rejected, pending ou blocked.
+type Outcome struct {
+	Kind     string
+	Provider string
+	Status   string
+	Code     string
+}
+
+func outcomeOf(item spool.Item, status string, code string) Outcome {
+	var body struct {
+		Provider string `json:"provider"`
+	}
+	_ = json.Unmarshal(item.Body, &body)
+	return Outcome{Kind: item.Kind, Provider: body.Provider, Status: status, Code: code}
+}
+
+func outcomesFrom(items []spool.Item, from int, status string) []Outcome {
+	var out []Outcome
+	for i := from; i < len(items); i++ {
+		if items[i].State == spool.StatePending {
+			out = append(out, outcomeOf(items[i], status, ""))
+		}
+	}
+	return out
 }
 
 func Run(ctx context.Context, cfg Config) (Result, error) {
@@ -105,6 +133,7 @@ func Run(ctx context.Context, cfg Config) (Result, error) {
 func send(ctx context.Context, cfg Config, items []spool.Item) (Result, error) {
 	result := Result{Collected: len(items)}
 	if spool.HasBlocked(items) {
+		result.Outcomes = outcomesFrom(items, 0, "blocked")
 		changed := false
 		for i := range items {
 			if items[i].State == spool.StatePending {
@@ -136,9 +165,11 @@ func send(ctx context.Context, cfg Config, items []spool.Item) (Result, error) {
 				return result, errors.Join(err, saveErr)
 			}
 			result.Pending = countState(kept, spool.StatePending)
+			result.Outcomes = append(result.Outcomes, outcomesFrom(items, i, "pending")...)
 			return result, err
 		}
 		if status == http.StatusUnauthorized && code == apierr.CodeDeviceRevoked {
+			result.Outcomes = append(result.Outcomes, outcomesFrom(items, i, "blocked")...)
 			for j := range items {
 				if items[j].State == spool.StatePending {
 					items[j].State = spool.StateBlocked
@@ -151,16 +182,19 @@ func send(ctx context.Context, cfg Config, items []spool.Item) (Result, error) {
 			return result, nil
 		}
 		if status == http.StatusOK {
+			result.Outcomes = append(result.Outcomes, outcomeOf(items[i], "duplicate", ""))
 			items[i].State = "confirmed"
 			result.Duplicate++
 			continue
 		}
 		if status == http.StatusCreated {
+			result.Outcomes = append(result.Outcomes, outcomeOf(items[i], "accepted", ""))
 			items[i].State = "confirmed"
 			result.Accepted++
 			continue
 		}
 		if status >= 400 && status < 500 {
+			result.Outcomes = append(result.Outcomes, outcomeOf(items[i], "rejected", code))
 			items[i].State = spool.StateRejected
 			result.Rejected++
 			continue
@@ -170,6 +204,7 @@ func send(ctx context.Context, cfg Config, items []spool.Item) (Result, error) {
 			return result, err
 		}
 		result.Pending = countState(kept, spool.StatePending)
+		result.Outcomes = append(result.Outcomes, outcomesFrom(items, i, "pending")...)
 		return result, fmt.Errorf("resposta %d", status)
 	}
 	kept, err := persist(cfg.SpoolPath, items)

@@ -177,31 +177,51 @@ func runFile(ctx context.Context, file agent.File) (agent.Result, error) {
 
 func report(result agent.Result, err error) int {
 	if result.CodexLive == "read" {
-		fmt.Fprintln(os.Stderr, "codex lido pelo comando local")
+		fmt.Fprintln(os.Stderr, "codex: read live from the local command")
 	}
 	if result.CodexLive == "fallback" {
-		fmt.Fprintln(os.Stderr, "codex ao vivo indisponível; a observação do arquivo foi mantida")
+		fmt.Fprintln(os.Stderr, "codex: live read unavailable, kept the file observation")
 	}
 	if result.AgyLive == "read" {
-		fmt.Fprintln(os.Stderr, "antigravity lido pelo comando local")
+		fmt.Fprintln(os.Stderr, "antigravity: read live from the local command")
 	}
 	if result.AgyLive == "miss" {
-		fmt.Fprintln(os.Stderr, "antigravity indisponível; nenhuma amostra nova deste provedor")
+		fmt.Fprintln(os.Stderr, "antigravity: live read unavailable, no new sample from this provider")
+	}
+	for _, line := range outcomeLines(result.Outcomes) {
+		fmt.Fprintln(os.Stderr, line)
 	}
 	if errors.Is(err, errToken) {
-		fmt.Fprintln(os.Stderr, "token ilegível")
+		fmt.Fprintln(os.Stderr, "token unreadable")
 		return 1
 	}
 	if err != nil && !result.Blocked {
-		fmt.Fprintln(os.Stderr, "envio incompleto; a fila local foi preservada")
+		fmt.Fprintln(os.Stderr, "send incomplete; the local queue was kept")
 		return 1
 	}
 	if result.Blocked {
-		fmt.Fprintln(os.Stderr, "dispositivo revogado; a fila não será reenviada com esta credencial")
+		fmt.Fprintln(os.Stderr, "device revoked; the queue will not be resent with this credential")
 		return 3
 	}
-	fmt.Fprintf(os.Stderr, "aceitas %d duplicadas %d rejeitadas %d pendentes %d\n", result.Accepted, result.Duplicate, result.Rejected, result.Pending)
+	fmt.Fprintf(os.Stderr, "total accepted=%d duplicate=%d rejected=%d pending=%d\n", result.Accepted, result.Duplicate, result.Rejected, result.Pending)
 	return 0
+}
+
+// outcomeLines escreve uma linha por item: provedor, tipo, estado e, se houve, o código.
+func outcomeLines(outcomes []agent.Outcome) []string {
+	lines := make([]string, 0, len(outcomes))
+	for _, outcome := range outcomes {
+		provider := outcome.Provider
+		if provider == "" {
+			provider = "unknown"
+		}
+		line := fmt.Sprintf("%s %s %s", provider, outcome.Kind, outcome.Status)
+		if outcome.Code != "" {
+			line += " code=" + outcome.Code
+		}
+		lines = append(lines, line)
+	}
+	return lines
 }
 
 func codexBinary(dir string) string {

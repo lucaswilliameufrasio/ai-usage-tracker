@@ -126,3 +126,43 @@ func TestChooseRunKeepsFlagsAndSavedConfig(t *testing.T) {
 		t.Fatal("setup")
 	}
 }
+
+func wizardWithToken(t *testing.T, input string) (string, string) {
+	t.Helper()
+	home := t.TempDir()
+	token := filepath.Join(home, "device.token")
+	if err := os.WriteFile(token, []byte("old-token\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var screen strings.Builder
+	_, code, _, err := runWizard(wizardOptions{
+		in:        strings.NewReader(input),
+		out:       &screen,
+		home:      home,
+		now:       time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC),
+		saved:     agent.File{API: "http://old.example:8787", ClaudeFile: filepath.Join(home, ".claude.json")},
+		tokenPath: token,
+		spoolPath: filepath.Join(home, "spool.json"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return code, screen.String()
+}
+
+func TestWizardKeepsTheTokenWhenTheServerStays(t *testing.T) {
+	code, _ := wizardWithToken(t, "\n\n\n\n\n\n\n")
+	if code != "" {
+		t.Fatalf("pediu código sem trocar o servidor: %q", code)
+	}
+}
+
+func TestWizardAsksForANewCodeWhenTheServerChanges(t *testing.T) {
+	code, shown := wizardWithToken(t, "http://new.example:8787\n\ncodigo-novo\n\n\n\n\n\n")
+	if code != "codigo-novo" {
+		t.Fatalf("código %q", code)
+	}
+	if !strings.Contains(shown, "The server changed") || strings.Contains(shown, "codigo-novo") {
+		t.Fatal(shown)
+	}
+}

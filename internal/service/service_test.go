@@ -233,8 +233,25 @@ func statuses(checks []Check) map[string]Status {
 }
 
 func healthy(t *testing.T) *httptest.Server {
+	return tracker(t, http.StatusOK, "")
+}
+
+// tracker answers /healthz with 200 and GET /v1/device with the given status and error code.
+func tracker(t *testing.T, deviceStatus int, code string) *httptest.Server {
 	t.Helper()
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/device" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(deviceStatus)
+			if deviceStatus == http.StatusOK {
+				_, _ = w.Write([]byte(`{"id":"dev_1","name":"notebook"}`))
+			} else if code != "" {
+				_, _ = w.Write([]byte(`{"error_code":"` + code + `"}`))
+			}
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
 	t.Cleanup(server.Close)
 	return server
 }
@@ -262,7 +279,7 @@ func TestDoctorSeesAHealthyInstall(t *testing.T) {
 		t.Fatalf("checks %+v", checks)
 	}
 	got := statuses(checks)
-	for _, name := range []string{"platform", "config", "token", "service file", "binary", "service", "autostart", "linger", "server", "queue"} {
+	for _, name := range []string{"platform", "config", "token", "service file", "binary", "service", "autostart", "linger", "server", "device", "queue"} {
 		if got[name] != OK {
 			t.Fatalf("%s = %q em %+v", name, got[name], checks)
 		}
@@ -330,5 +347,50 @@ func TestDoctorReadsLaunchdState(t *testing.T) {
 	checks = manager.Doctor(context.Background(), DoctorInput{Config: cfg, ConfigPath: "agent.json"})
 	if statuses(checks)["service"] != OK {
 		t.Fatalf("checks %+v", checks)
+	}
+}
+
+func TestDoctorSaysWhatTheServerThinksOfTheToken(t *testing.T) {
+	cases := []struct {
+		name   string
+		status int
+		code   string
+		want   Status
+		text   string
+	}{
+		{"aceito", http.StatusOK, "", OK, "notebook"},
+		{"outro servidor", http.StatusUnauthorized, "UNAUTHORIZED", Fail, "another server"},
+		{"revogado", http.StatusUnauthorized, "DEVICE_REVOKED", Fail, "revoked"},
+		{"servidor antigo", http.StatusNotFound, "", Warn, "too old"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			manager, cfg, _ := setup(t, "linux")
+			cfg.API = tracker(t, tc.status, tc.code).URL
+			checks := manager.Doctor(context.Background(), DoctorInput{Config: cfg, ConfigPath: "agent.json"})
+			for _, check := range checks {
+				if check.Name != "device" {
+					continue
+				}
+				if check.Status != tc.want || !strings.Contains(check.Detail, tc.text) {
+					t.Fatalf("device = %+v", check)
+				}
+				if tc.want == Fail && !strings.Contains(check.Fix, "ai-usage setup") {
+					t.Fatalf("sem correção: %+v", check)
+				}
+				return
+			}
+			t.Fatalf("sem checagem do dispositivo: %+v", checks)
+		})
+	}
+}
+
+func TestDoctorSkipsTheTokenCheckWhenTheServerIsDown(t *testing.T) {
+	manager, cfg, _ := setup(t, "linux")
+	cfg.API = "http://127.0.0.1:1"
+	for _, check := range manager.Doctor(context.Background(), DoctorInput{Config: cfg, ConfigPath: "agent.json"}) {
+		if check.Name == "device" {
+			t.Fatalf("checou o token sem servidor: %+v", check)
+		}
 	}
 }

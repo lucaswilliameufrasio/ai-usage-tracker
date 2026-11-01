@@ -87,8 +87,13 @@ func runWizard(opts wizardOptions) (agent.File, string, string, error) {
 		}
 		nameDefault = name
 		code := ""
-		if !tokenReady(opts.tokenPath) {
-			code, err = ask(reader, opts, "Code", "Create a code under Devices and paste it here. It is not saved in the configuration.", "", false, false)
+		serverChanged := opts.saved.API != "" && api != opts.saved.API
+		if !tokenReady(opts.tokenPath) || serverChanged {
+			codeBody := "Create a code under Devices and paste it here. It is not saved in the configuration."
+			if serverChanged && tokenReady(opts.tokenPath) {
+				codeBody = "The server changed, so this device must be enrolled again. Create a code under Devices on the new server and paste it here. The old token is replaced."
+			}
+			code, err = ask(reader, opts, "Code", codeBody, "", false, false)
 			if err != nil {
 				return agent.File{}, "", "", err
 			}

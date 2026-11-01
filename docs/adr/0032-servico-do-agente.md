@@ -20,6 +20,14 @@ O ADR 0016 deixou a repetição como um comando em primeiro plano e recusou trat
 - `doctor` só lê. Confere plataforma, configuração, token, binário, arquivo do serviço (e se aponta para este binário), estado do serviço, linger no Linux, ferramentas no PATH do serviço, `/healthz` do servidor e a fila local (incluindo itens bloqueados por revogação). Imprime `ok`, `warn` ou `fail` com a correção, e sai com 1 se houver `fail`.
 - No Linux o linger não é ligado sozinho. `install` e `doctor` avisam e dizem o comando, porque mexe numa configuração da conta.
 
+## Troca de servidor
+
+Trocar o endereço no `setup` com um token já gravado deixava o agente mandando o token antigo ao servidor novo, que o recusa. O assistente agora compara o endereço novo com o salvo. Se mudou, pede um código de enrolamento do servidor novo, mesmo com token gravado, e o enrolamento substitui o token. Se o serviço estiver instalado, o fim do `setup` avisa que ele segue com a configuração antiga até `ai-usage service install`.
+
+## Verificação do token
+
+Os testes locais não pegam um token de outro servidor ou revogado. O servidor ganha `GET /v1/device`, autenticado só por token de dispositivo, que devolve `id`, `name` e `created_at` e não grava nada. O agente tem `CheckToken`, e o `doctor` chama isso depois de o `/healthz` responder. Token aceito é `ok` com o nome do dispositivo. Token desconhecido e dispositivo revogado são `fail` com o passo de reenrolar. Servidor sem a rota (404) é `warn`, não erro, porque ele só precisa ser atualizado. A rota só existe a partir desta versão do servidor.
+
 ## Alternativas rejeitadas
 
 - Modo daemon próprio (fork e pidfile). Reimplementa o que o sistema já faz melhor.

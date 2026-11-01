@@ -304,3 +304,56 @@ func Enroll(ctx context.Context, client *http.Client, api string, code string, n
 	}
 	return Enrollment{DeviceID: payload.DeviceID, Token: payload.Token, Name: payload.Name}, nil
 }
+
+// Token states reported by CheckToken.
+const (
+	TokenAccepted = "accepted"
+	TokenRefused  = "refused"
+	TokenRevoked  = "revoked"
+	TokenUnknown  = "unknown"
+)
+
+type TokenCheck struct {
+	State  string
+	Device string
+}
+
+// CheckToken asks the server whether it accepts the device token. It writes nothing.
+// A server that predates GET /v1/device answers 404, which is reported as unknown.
+func CheckToken(ctx context.Context, client *http.Client, api string, token string) (TokenCheck, error) {
+	if client == nil {
+		client = &http.Client{Timeout: 10 * time.Second}
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(api, "/")+"/v1/device", nil)
+	if err != nil {
+		return TokenCheck{}, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := client.Do(req)
+	if err != nil {
+		return TokenCheck{}, err
+	}
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return TokenCheck{}, err
+	}
+	switch resp.StatusCode {
+	case http.StatusOK:
+		var body struct {
+			Name string `json:"name"`
+		}
+		_ = json.Unmarshal(raw, &body)
+		return TokenCheck{State: TokenAccepted, Device: body.Name}, nil
+	case http.StatusUnauthorized:
+		var body struct {
+			Code string `json:"error_code"`
+		}
+		_ = json.Unmarshal(raw, &body)
+		if body.Code == apierr.CodeDeviceRevoked {
+			return TokenCheck{State: TokenRevoked}, nil
+		}
+		return TokenCheck{State: TokenRefused}, nil
+	}
+	return TokenCheck{State: TokenUnknown}, nil
+}

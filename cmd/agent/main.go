@@ -148,6 +148,7 @@ func finishSetup(saved agent.File, paths agent.Paths) {
 		fmt.Fprintln(os.Stderr, "could not write the configuration")
 		os.Exit(1)
 	}
+	noteInstalledService()
 	execute(file)
 }
 

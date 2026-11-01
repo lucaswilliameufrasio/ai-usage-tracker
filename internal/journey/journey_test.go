@@ -463,3 +463,54 @@ func countFrom(t *testing.T, db *store.Store) int {
 	}
 	return count
 }
+
+func TestTheServerSaysWhetherItAcceptsTheDeviceToken(t *testing.T) {
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "tracker.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	api := &httpapi.Server{
+		Store:          db,
+		Now:            func() time.Time { return time.Date(2026, 10, 29, 15, 0, 0, 0, time.UTC) },
+		Sender:         push.NewRecording("BEl0test-public-key"),
+		AllowOpenSetup: true,
+		Logger:         slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil)),
+	}
+	server := httptest.NewServer(api.Handler())
+	t.Cleanup(server.Close)
+
+	operator := setup(t, server.URL)
+	enrolled, err := agent.Enroll(context.Background(), server.Client(), server.URL, enrollment(t, server.URL, operator), "notebook")
+	if err != nil {
+		t.Fatal(err)
+	}
+	check := func(token string) agent.TokenCheck {
+		t.Helper()
+		result, err := agent.CheckToken(context.Background(), server.Client(), server.URL, token)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return result
+	}
+	if got := check(enrolled.Token); got.State != agent.TokenAccepted || got.Device != "notebook" {
+		t.Fatalf("token válido: %+v", got)
+	}
+	if got := check("token-de-outro-servidor"); got.State != agent.TokenRefused {
+		t.Fatalf("token desconhecido: %+v", got)
+	}
+	revoke(t, server.URL, operator, enrolled.DeviceID)
+	if got := check(enrolled.Token); got.State != agent.TokenRevoked {
+		t.Fatalf("token revogado: %+v", got)
+	}
+	if samples, err := db.RecentSamplesFor("", "claude", 8); err != nil || len(samples) != 0 {
+		t.Fatalf("a checagem gravou amostras: %v %v", samples, err)
+	}
+
+	old := httptest.NewServer(http.NotFoundHandler())
+	t.Cleanup(old.Close)
+	if got, err := agent.CheckToken(context.Background(), old.Client(), old.URL, "qualquer"); err != nil || got.State != agent.TokenUnknown {
+		t.Fatalf("servidor antigo: %+v %v", got, err)
+	}
+}

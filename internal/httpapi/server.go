@@ -69,6 +69,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/devices", s.enroll)
 	mux.HandleFunc("GET /v1/devices", s.operator(s.listDevices))
 	mux.HandleFunc("POST /v1/devices/{id}/revoke", s.operator(s.revokeDevice))
+	mux.HandleFunc("GET /v1/device", s.device(s.currentDevice))
 	mux.HandleFunc("POST /v1/samples", s.device(s.ingestSample))
 	mux.HandleFunc("POST /v1/source-reports", s.device(s.ingestReport))
 	mux.HandleFunc("GET /v1/samples", s.operator(s.listSamples))
@@ -215,6 +216,16 @@ func (s *Server) listDevices(w http.ResponseWriter, _ *http.Request) {
 		return
 	}
 	writeDevices(w, devices)
+}
+
+// currentDevice answers who the device token belongs to. It writes nothing, so the agent
+// and its doctor can ask whether the server still accepts the token.
+func (s *Server) currentDevice(w http.ResponseWriter, _ *http.Request, device store.Device) {
+	writeJSON(w, http.StatusOK, map[string]any{
+		"id":         device.ID,
+		"name":       device.Name,
+		"created_at": device.CreatedAt,
+	})
 }
 
 func writeDevices(w http.ResponseWriter, devices []store.Device) {

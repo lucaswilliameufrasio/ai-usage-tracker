@@ -121,7 +121,11 @@ func (m Manager) Doctor(ctx context.Context, in DoctorInput) []Check {
 		checks = append(checks, m.toolChecks(cfg, InstalledPATH(string(raw)))...)
 	}
 	if ready {
-		checks = append(checks, m.serverCheck(ctx, in, cfg))
+		server := m.serverCheck(ctx, in, cfg)
+		checks = append(checks, server)
+		if server.Status == OK {
+			checks = append(checks, m.deviceCheck(ctx, in, cfg))
+		}
 		checks = append(checks, m.queueCheck(cfg))
 	}
 	return checks
@@ -226,6 +230,33 @@ func (m Manager) serverCheck(ctx context.Context, in DoctorInput, cfg agent.File
 		return Check{Name: "server", Status: Fail, Detail: fmt.Sprintf("%s answered %d", url, resp.StatusCode), Fix: "check the tracker logs"}
 	}
 	return Check{Name: "server", Status: OK, Detail: cfg.API}
+}
+
+// deviceCheck asks the server whether it accepts the saved token. A token from another
+// server, or a revoked one, passes every local check and still fails here.
+func (m Manager) deviceCheck(ctx context.Context, in DoctorInput, cfg agent.File) Check {
+	raw, err := os.ReadFile(cfg.TokenFile)
+	if err != nil {
+		return Check{Name: "device", Status: Fail, Detail: "token unreadable", Fix: "run: ai-usage setup"}
+	}
+	result, err := agent.CheckToken(ctx, in.HTTP, cfg.API, strings.TrimSpace(string(raw)))
+	if err != nil {
+		return Check{Name: "device", Status: Warn, Detail: "could not ask the server about the token", Fix: "run: ai-usage service doctor again"}
+	}
+	const enroll = "create a code under Devices on this server and run: ai-usage setup"
+	switch result.State {
+	case agent.TokenAccepted:
+		detail := "the server accepts this device token"
+		if result.Device != "" {
+			detail = "the server knows this device as " + result.Device
+		}
+		return Check{Name: "device", Status: OK, Detail: detail}
+	case agent.TokenRevoked:
+		return Check{Name: "device", Status: Fail, Detail: "this device was revoked on the server", Fix: enroll}
+	case agent.TokenRefused:
+		return Check{Name: "device", Status: Fail, Detail: "the server does not accept this token; it was probably issued by another server", Fix: enroll}
+	}
+	return Check{Name: "device", Status: Warn, Detail: "this server is too old to verify the token", Fix: "update the tracker to the version that has GET /v1/device"}
 }
 
 func (m Manager) queueCheck(cfg agent.File) Check {

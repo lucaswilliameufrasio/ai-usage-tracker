@@ -174,3 +174,19 @@ func formatChecks(checks []service.Check) []string {
 	}
 	return append(lines, "", summary)
 }
+
+// noteInstalledService tells someone who just changed the settings that the background service
+// still runs with the old ones until it is restarted.
+func noteInstalledService() {
+	manager, err := serviceManager()
+	if err != nil {
+		return
+	}
+	file, err := manager.FilePath()
+	if err != nil {
+		return
+	}
+	if _, err := os.Stat(file); err == nil {
+		fmt.Fprintln(os.Stderr, "the background service is installed and still runs with the old settings; apply the new ones with: ai-usage service install")
+	}
+}
